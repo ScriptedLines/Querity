@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "querity"
+version = "0.1.0"
+description = "Querity: guarded, human-in-the-loop text-to-SQL agent and terminal chat for PostgreSQL"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "inflect>=7.0.0",
+    "langchain-core>=1.6.12",
+    "langchain-google-genai>=4.4.0",
+    "langchain-nvidia-ai-endpoints>=1.4.3",
+    "langgraph>=1.0.0",
+    "langgraph-checkpoint-sqlite>=3.0.0",
+    "networkx>=3.7",
+    "platformdirs>=4.0.0",
+    "psycopg[binary]>=3.2",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.16.1",
+    "python-dotenv>=1.2.4",
+    "pyyaml>=6.0.3",
+    "rich>=14.0.0",
+    "sqlalchemy>=2.1.5",
+    "sqlglot>=26",
+    "tenacity>=9.1.4",
+    "textual>=6.0.0",
+]
+
+[project.scripts]
+querity = "querity.cli.main:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/querity"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -p no:launch_testing -p no:launch_ros"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]
+
