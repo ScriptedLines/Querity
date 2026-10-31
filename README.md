@@ -225,7 +225,7 @@ flowchart LR
 The one-line bootstrap installer configures an isolated environment and links the `querity` binary to `~/.local/bin/querity`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<username>/<repo>/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ScriptedLines/Querity/main/install.sh | bash
 ```
 
 If Python 3.12+ is not installed, the script automatically provisions an isolated Python runtime via `uv` without requiring root permissions.
@@ -233,20 +233,20 @@ If Python 3.12+ is not installed, the script automatically provisions an isolate
 ### Method 2: Standalone Tool via `uv`
 
 ```bash
-uv tool install git+https://github.com/<username>/<repo>.git
+uv tool install git+https://github.com/ScriptedLines/Querity.git
 ```
 
 ### Method 3: Isolated Application via `pipx`
 
 ```bash
-pipx install git+https://github.com/<username>/<repo>.git
+pipx install git+https://github.com/ScriptedLines/Querity.git
 ```
 
 ### Method 4: From Source
 
 ```bash
-git clone https://github.com/<username>/<repo>.git
-cd querity
+git clone https://github.com/ScriptedLines/Querity.git
+cd Querity
 uv sync
 .venv/bin/querity
 ```

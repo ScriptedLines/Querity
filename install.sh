@@ -39,7 +39,7 @@ else
     REPO_URL="${QUERITY_REPO_URL:-https://github.com/$(git config --get remote.origin.url 2>/dev/null || echo '')}"
     if [ -z "${REPO_URL}" ] || [ "${REPO_URL}" = "https://github.com/" ]; then
         # Default fallback or user can specify QUERITY_REPO_URL
-        REPO_URL="${QUERITY_REPO:-git+https://github.com/aaryamann-k/querity.git}"
+        REPO_URL="${QUERITY_REPO:-git+https://github.com/ScriptedLines/Querity.git}"
     fi
     SOURCE="${REPO_URL}"
     echo -e "${CYAN}→${RESET} Installing from repository: ${BOLD}${SOURCE}${RESET}"
