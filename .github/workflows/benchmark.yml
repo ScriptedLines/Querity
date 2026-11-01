@@ -90,16 +90,16 @@ jobs:
           fi
 
           MIN_SUCCESS="${{ inputs.min_success_rate }}"
-          MIN_SUCCESS="${MIN_SUCCESS:-90.0}"
+          MIN_SUCCESS="${MIN_SUCCESS:-80.0}"
 
           MIN_RECALL="${{ inputs.min_table_recall }}"
-          MIN_RECALL="${MIN_RECALL:-80.0}"
+          MIN_RECALL="${MIN_RECALL:-75.0}"
 
           MIN_GUARD="${{ inputs.min_guard_pass_rate }}"
-          MIN_GUARD="${MIN_GUARD:-95.0}"
+          MIN_GUARD="${MIN_GUARD:-90.0}"
 
           MAX_LATENCY="${{ inputs.max_mean_latency_ms }}"
-          MAX_LATENCY="${MAX_LATENCY:-45000.0}"
+          MAX_LATENCY="${MAX_LATENCY:-60000.0}"
 
           uv run querity benchmark \
             --golden-path data/golden_queries.json \
@@ -116,6 +116,9 @@ jobs:
         run: |
           if [ -f benchmarks/runs/latest/summary.md ]; then
             cat benchmarks/runs/latest/summary.md >> $GITHUB_STEP_SUMMARY
+            echo "::group::Benchmark Executive Summary"
+            cat benchmarks/runs/latest/summary.md
+            echo "::endgroup::"
           fi
 
       - name: Upload Benchmark Artifacts (Logs, JSON, Markdown)

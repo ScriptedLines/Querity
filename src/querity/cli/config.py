@@ -155,6 +155,9 @@ class CliConfig:
         if url:
             values["source_database_url"] = url
             values["metadata_database_url"] = url
+        else:
+            values["source_database_url"] = None
+            values["metadata_database_url"] = None
         if self.review_model.strip():
             values["review_model"] = self.review_model.strip()
         if self.embedding_dimensions > 2_000:
@@ -350,7 +353,7 @@ class CliConfig:
     def load(cls, path: Path | None = None) -> CliConfig:
         target = path or config_path()
         if not target.exists():
-            if os.environ.get("SOURCE_DATABASE_URL"):
+            if path is None and os.environ.get("SOURCE_DATABASE_URL"):
                 return cls.from_env()
             raise ConfigNotFound(f"No configuration found at {target}. Run `querity init` first.")
         with contextlib.suppress(OSError):
