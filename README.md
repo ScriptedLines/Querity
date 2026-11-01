@@ -4,6 +4,10 @@ Guarded, human-in-the-loop text-to-SQL agent and terminal interface for PostgreS
 
 Querity indexes a read-only view of your database, retrieves the relevant schema and semantic definitions for each question, and generates SQL that is validated, safe, and presented for explicit approval before execution.
 
+<p align="center">
+  <img src="assets/image.png" alt="Querity Terminal Interface" width="100%" />
+</p>
+
 ---
 
 ## Architecture
