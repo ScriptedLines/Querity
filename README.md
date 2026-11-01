@@ -33,7 +33,7 @@ flowchart TD
         NodeGuard --> NodeReview["review<br/>(Secondary Critic Model)"]
         NodeReview --> NodeHuman["human_review<br/>(Durable Interrupt Gate & Modal SQL Editor)"]
         
-        NodeHuman -->|Approve (Anti-TOCTOU Verified)| NodeExecute["execute<br/>(psycopg Read-Only & Bounded fetchmany)"]
+        NodeHuman -->|Approve| NodeExecute["execute<br/>(psycopg Read-Only & Bounded fetchmany)"]
         NodeHuman -->|Edit SQL| NodeGuard
         NodeHuman -->|Revise with Feedback| NodeRevise["revise"] --> NodeGenerate
         NodeHuman -->|Reject| NodeFinalize["finalize"]
