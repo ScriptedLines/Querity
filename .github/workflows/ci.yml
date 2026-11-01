@@ -12,6 +12,17 @@ jobs:
   test:
     name: Run Tests & Build Check
     runs-on: ubuntu-latest
+    env:
+      SOURCE_DATABASE_URL: ${{ secrets.SOURCE_DATABASE_URL }}
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      SOURCE_SCHEMAS: public
+      METADATA_SCHEMA: querity
+      LLM_PROVIDER: google
+      LLM_MODEL: gemini-3.5-flash-lite
+      EMBEDDING_PROVIDER: nvidia
+      EMBEDDING_MODEL: nvidia/nemotron-3-embed-1b
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
