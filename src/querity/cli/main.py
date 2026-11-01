@@ -95,6 +95,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     version = sub.add_parser("version", help="print the version")
     version.set_defaults(handler=_cmd_version)
+
+    benchmark = sub.add_parser("benchmark", help="evaluate latency, accuracy, and stage metrics on real database")
+    benchmark.add_argument("--limit", "-n", type=int, default=None, help="limit number of queries to evaluate")
+    benchmark.add_argument("--golden-path", "-g", type=str, default="data/golden_queries.json", help="path to golden queries JSON")
+    benchmark.add_argument("--output-dir", "-o", type=str, default="benchmarks/runs", help="directory to save run artifacts")
+    benchmark.add_argument("--min-success-rate", type=float, default=None, help="minimum execution success rate % (e.g. 90.0)")
+    benchmark.add_argument("--min-table-recall", type=float, default=None, help="minimum average table recall % (e.g. 80.0)")
+    benchmark.add_argument("--min-guard-pass-rate", type=float, default=None, help="minimum SQL guard pass rate % (e.g. 95.0)")
+    benchmark.add_argument("--max-mean-latency-ms", type=float, default=None, help="maximum allowed mean latency in ms (e.g. 40000.0)")
+    benchmark.add_argument("--min-exact-match-rate", type=float, default=None, help="minimum exact match rate % (e.g. 70.0)")
+    benchmark.add_argument("--fail-on-threshold", action="store_true", help="exit with error code 1 if any threshold is violated")
+    benchmark.set_defaults(handler=_cmd_benchmark)
     return parser
 
 
@@ -583,6 +595,28 @@ def _apply_line_approval(
         )
     console.print("Choose a/e/r/x.")
     return pending
+
+
+def _cmd_benchmark(args: argparse.Namespace) -> int:
+    from querity.benchmarks.runner import run_benchmark
+
+    try:
+        run_benchmark(
+            golden_path=args.golden_path,
+            output_dir=args.output_dir,
+            limit=args.limit,
+            min_success_rate=args.min_success_rate,
+            min_table_recall=args.min_table_recall,
+            min_guard_pass_rate=args.min_guard_pass_rate,
+            max_mean_latency_ms=args.max_mean_latency_ms,
+            min_exact_match_rate=args.min_exact_match_rate,
+            fail_on_threshold=args.fail_on_threshold,
+            verbose=True,
+        )
+        return 0
+    except Exception as exc:
+        console.print(f"[bold red]Benchmark run failed:[/bold red] {exc}")
+        return 1
 
 
 if __name__ == "__main__":

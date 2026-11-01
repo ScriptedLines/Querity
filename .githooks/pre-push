@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Querity Pre-Push Quality & Latency Benchmark Gate
+# ==============================================================================
+# Prevents git push if benchmarks fail threshold criteria.
+# To activate:
+#   git config core.hooksPath .githooks
+# ==============================================================================
+
+set -e
+
+echo "=== [Querity] Running Pre-Push Benchmark Gate against Real PostgreSQL ==="
+
+# Check if uv is available
+if command -v uv >/dev/null 2>&1; then
+    RUNNER="uv run"
+else
+    RUNNER="python3"
+fi
+
+# Run a 3-query smoke benchmark with strict threshold enforcement
+$RUNNER querity benchmark \
+    --limit 3 \
+    --min-success-rate 90.0 \
+    --min-table-recall 80.0 \
+    --min-guard-pass-rate 95.0 \
+    --max-mean-latency-ms 45000.0 \
+    --fail-on-threshold
+
+echo "=== [Querity] Benchmark Gate PASSED. Proceeding with push. ==="
+

@@ -365,6 +365,12 @@ querity status --json
 
 # View configuration path and details
 querity config --path
+
+# Run latency and accuracy benchmarks on the active PostgreSQL database
+querity benchmark
+
+# Evaluate a subset of golden queries
+querity benchmark --limit 5
 ```
 
 ---

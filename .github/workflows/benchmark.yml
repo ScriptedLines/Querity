@@ -1,0 +1,119 @@
+name: Benchmark Quality & Latency Gate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Number of golden queries to benchmark (leave empty for all)"
+        required: false
+        default: ""
+      min_success_rate:
+        description: "Minimum execution success rate (%)"
+        required: false
+        default: "90.0"
+      min_table_recall:
+        description: "Minimum average table recall (%)"
+        required: false
+        default: "80.0"
+      min_guard_pass_rate:
+        description: "Minimum SQL guard pass rate (%)"
+        required: false
+        default: "95.0"
+      max_mean_latency_ms:
+        description: "Maximum allowed mean latency in ms"
+        required: false
+        default: "45000.0"
+
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: Real-Database Benchmark Gate
+    runs-on: ubuntu-latest
+    env:
+      # Secrets are injected from GitHub Repository Secrets
+      SOURCE_DATABASE_URL: ${{ secrets.SOURCE_DATABASE_URL }}
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      SOURCE_SCHEMAS: public
+      METADATA_SCHEMA: querity
+      LLM_PROVIDER: google
+      LLM_MODEL: gemini-3.5-flash-lite
+      EMBEDDING_PROVIDER: nvidia
+      EMBEDDING_MODEL: nvidia/nemotron-3-embed-1b
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify Secret Availability
+        id: check_secrets
+        run: |
+          if [ -z "${{ secrets.SOURCE_DATABASE_URL }}" ] || [ -z "${{ secrets.GOOGLE_API_KEY }}" ]; then
+            echo "::warning ::SOURCE_DATABASE_URL or GOOGLE_API_KEY secret is not configured. Live benchmark will be skipped."
+            echo "has_secrets=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_secrets=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up uv
+        if: steps.check_secrets.outputs.has_secrets == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Set up Python 3.12
+        if: steps.check_secrets.outputs.has_secrets == 'true'
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        if: steps.check_secrets.outputs.has_secrets == 'true'
+        run: uv sync --all-groups
+
+      - name: Run Benchmark with Threshold Quality Gate
+        if: steps.check_secrets.outputs.has_secrets == 'true'
+        run: |
+          EXTRA_ARGS=""
+          if [ -n "${{ inputs.limit }}" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --limit ${{ inputs.limit }}"
+          fi
+
+          MIN_SUCCESS="${{ inputs.min_success_rate || '90.0' }}"
+          MIN_RECALL="${{ inputs.min_table_recall || '80.0' }}"
+          MIN_GUARD="${{ inputs.min_guard_pass_rate || '95.0' }}"
+          MAX_LATENCY="${{ inputs.max_mean_latency_ms || '45000.0' }}"
+
+          uv run querity benchmark \
+            --golden-path data/golden_queries.json \
+            --output-dir benchmarks/runs \
+            --min-success-rate "$MIN_SUCCESS" \
+            --min-table-recall "$MIN_RECALL" \
+            --min-guard-pass-rate "$MIN_GUARD" \
+            --max-mean-latency-ms "$MAX_LATENCY" \
+            --fail-on-threshold \
+            $EXTRA_ARGS
+
+      - name: Publish Benchmark Summary to GitHub Actions Summary
+        if: steps.check_secrets.outputs.has_secrets == 'true' && always()
+        run: |
+          if [ -f benchmarks/runs/latest/summary.md ]; then
+            cat benchmarks/runs/latest/summary.md >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload Benchmark Artifacts (Logs, JSON, Markdown)
+        if: steps.check_secrets.outputs.has_secrets == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-artifacts-${{ github.run_id }}
+          path: benchmarks/runs/latest/
+          retention-days: 14
+

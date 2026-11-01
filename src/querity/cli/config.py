@@ -322,9 +322,36 @@ class CliConfig:
         return config
 
     @classmethod
+    def from_env(cls) -> CliConfig:
+        env_url = os.environ.get("SOURCE_DATABASE_URL", "")
+        return cls.from_dict({
+            "database_url": env_url,
+            "source_id": os.environ.get("SOURCE_ID", "default"),
+            "source_schemas": os.environ.get("SOURCE_SCHEMAS", "public"),
+            "metadata_schema": os.environ.get("METADATA_SCHEMA", "querity"),
+            "google_api_key": os.environ.get("GOOGLE_API_KEY", ""),
+            "nvidia_api_key": os.environ.get("NVIDIA_API_KEY", ""),
+            "llm_provider": os.environ.get("LLM_PROVIDER", "google"),
+            "llm_model": os.environ.get("LLM_MODEL", "gemini-3.5-flash-lite"),
+            "llm_secondary_model": os.environ.get("LLM_SECONDARY_MODEL", "gemini-3.1-flash-lite"),
+            "llm_tertiary_model": os.environ.get("LLM_TERTIARY_MODEL", "gemini-2.5-flash-lite"),
+            "review_model": os.environ.get("AGENT_REVIEW_MODEL", os.environ.get("REVIEW_MODEL", "")),
+            "embedding_provider": os.environ.get("EMBEDDING_PROVIDER", "nvidia"),
+            "embedding_model": os.environ.get("EMBEDDING_MODEL", "nvidia/nemotron-3-embed-1b"),
+            "embedding_dimensions": int(os.environ.get("EMBEDDING_DIMENSIONS", "2048")),
+            "generate_semantic_layer": os.environ.get("GENERATE_SEMANTIC_LAYER", "true").lower() in ("true", "1", "yes"),
+            "statement_timeout_ms": int(os.environ.get("STATEMENT_TIMEOUT_MS", "15000")),
+            "agent_statement_timeout_ms": int(os.environ.get("AGENT_STATEMENT_TIMEOUT_MS", "15000")),
+            "max_result_rows": int(os.environ.get("MAX_RESULT_ROWS", "500")),
+            "max_revisions": int(os.environ.get("MAX_REVISIONS", "2")),
+        })
+
+    @classmethod
     def load(cls, path: Path | None = None) -> CliConfig:
         target = path or config_path()
         if not target.exists():
+            if os.environ.get("SOURCE_DATABASE_URL"):
+                return cls.from_env()
             raise ConfigNotFound(f"No configuration found at {target}. Run `querity init` first.")
         with contextlib.suppress(OSError):
             target.chmod(0o600)
