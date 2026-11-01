@@ -92,6 +92,8 @@ def run_benchmark(
                 f"Recall: {recall_str} | E2E: [cyan]{res.latencies.total_turn_ms:,.0f}ms[/cyan] "
                 f"(Gen: {res.latencies.generate_ms:,.0f}ms, Exec: {res.latencies.execute_ms:,.0f}ms)"
             )
+            if not res.accuracy.execution_success and res.execution_error:
+                console.print(f"   [dim red]Detail: {res.execution_error}[/dim red]")
     finally:
         service.close()
 

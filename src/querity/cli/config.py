@@ -119,7 +119,7 @@ class CliConfig:
             resolved_source_id = self.source_id
         else:
             resolved_source_id = source_id_from_url(url)
-        if not resolved_source_id:
+        if not resolved_source_id or resolved_source_id == "default":
             resolved_source_id = source_id_from_url(url) if url else "default"
 
         resolved_source_schemas = (
@@ -327,9 +327,12 @@ class CliConfig:
     @classmethod
     def from_env(cls) -> CliConfig:
         env_url = os.environ.get("SOURCE_DATABASE_URL", "")
+        source_id = os.environ.get("SOURCE_ID")
+        if not source_id:
+            source_id = source_id_from_url(env_url) if env_url else "default"
         return cls.from_dict({
             "database_url": env_url,
-            "source_id": os.environ.get("SOURCE_ID", "default"),
+            "source_id": source_id,
             "source_schemas": os.environ.get("SOURCE_SCHEMAS", "public"),
             "metadata_schema": os.environ.get("METADATA_SCHEMA", "querity"),
             "google_api_key": os.environ.get("GOOGLE_API_KEY", ""),

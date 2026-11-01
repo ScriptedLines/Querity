@@ -42,6 +42,7 @@ jobs:
     env:
       # Secrets are injected from GitHub Repository Secrets
       SOURCE_DATABASE_URL: ${{ secrets.SOURCE_DATABASE_URL }}
+      SOURCE_ID: postgres
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
       NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       SOURCE_SCHEMAS: public

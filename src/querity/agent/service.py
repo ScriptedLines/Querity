@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import uuid
 from collections.abc import Callable
@@ -90,6 +91,16 @@ class AgentService:
             settings.resolved_checkpoint_db_path
         )
         self.metadata_store = MetadataStore(settings)
+        with contextlib.suppress(Exception):
+            primary = self.metadata_store.primary_source_id()
+            if primary and settings.source_id != primary:
+                logger.info(
+                    "Auto-aligning active source_id from catalog: %s (was %s)",
+                    primary,
+                    settings.source_id,
+                )
+                settings = settings.model_copy(update={"source_id": primary})
+                self.settings = settings
         self.source_engine = create_agent_engine(settings)
         self.cache = cache if cache is not None else build_local_cache(settings)
         self.catalog_cache = CatalogCache(self.metadata_store, settings.source_id)
