@@ -320,26 +320,6 @@ querity config --path
 
 ---
 
-## Packaging & Releases
-
-To build distribution packages for release:
-
-```bash
-uv build
-```
-
-This generates:
-- Distribution wheel: `dist/querity-<version>-py3-none-any.whl`
-- Source distribution: `dist/querity-<version>.tar.gz`
-
-To publish to PyPI:
-
-```bash
-uv publish
-```
-
----
-
 ## License
 
 Apache License 2.0. See `LICENSE` for details.
