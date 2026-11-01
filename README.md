@@ -59,14 +59,14 @@ sequenceDiagram
     participant Pipeline as Ingestion Pipeline
     participant Source as Source PostgreSQL
     participant LLM as LLM Enricher
-    participant Store as MetadataStore (pgvector & Lexical FTS)
+    participant Store as MetadataStore (pgvector and Lexical FTS)
 
     Pipeline->>Source: Introspect schemas, tables, columns, PK/FK constraints, views, comments
     Pipeline->>Pipeline: Compute SHA-256 structural fingerprints
     alt Table structure unchanged
         Pipeline->>Store: Retain existing profile, lexical documents, and vectors
     else Table is new or modified
-        Pipeline->>Source: Query pg_stats for distinct cardinality & null fraction; sample low-cardinality enums
+        Pipeline->>Source: Query pg_stats for distinct cardinality and null fraction, sample low-cardinality enums
         Pipeline->>Pipeline: Apply PII masking (18+ regex patterns) to literal value samples
         Pipeline->>LLM: Synthesize business metrics, column descriptions (seeding pg_description)
         Pipeline->>Store: Compile unified content document (table + columns + metrics + enums)
