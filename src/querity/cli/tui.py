@@ -904,10 +904,12 @@ class QuerityTUI(App[None]):
     }
     #body {
         height: 1fr;
+        width: 100%;
         padding: 0 1;
     }
     #transcript {
         height: 1fr;
+        width: 100%;
         border: round $primary 40%;
         border-title-color: $foreground;
         border-title-align: left;
@@ -925,6 +927,7 @@ class QuerityTUI(App[None]):
     }
     #status-bar {
         height: 1;
+        width: 100%;
         padding: 0 1;
         background: $panel;
     }
@@ -945,7 +948,8 @@ class QuerityTUI(App[None]):
     #command-menu {
         display: none;
         height: auto;
-        max-height: 14;
+        max-height: 40%;
+        min-height: 3;
         margin: 0 1;
         padding: 0 1;
         background: $panel;
@@ -964,6 +968,7 @@ class QuerityTUI(App[None]):
     }
     #prompt {
         height: 3;
+        width: 100%;
         background: $surface;
         border: round $accent;
         border-title-color: $accent;
@@ -994,13 +999,15 @@ class QuerityTUI(App[None]):
         border: tall $accent;
     }
     #dialog, #sql-dialog {
-        width: 80%;
+        width: 86%;
+        max-width: 120;
         background: $surface;
         border: thick $primary 80%;
         padding: 1 2;
     }
     #sql-dialog {
         width: 92%;
+        max-width: 140;
         height: 82%;
     }
     .brand-mark {
@@ -1014,8 +1021,9 @@ class QuerityTUI(App[None]):
         scrollbar-color-active: $accent;
     }
     #setup-dialog {
-        width: 92%;
-        height: 92%;
+        width: 90%;
+        max-width: 110;
+        height: 90%;
         background: $surface;
         border: thick $primary 80%;
         padding: 1 2;
@@ -1044,7 +1052,8 @@ class QuerityTUI(App[None]):
     }
     #database-dialog {
         width: 88%;
-        height: 90%;
+        max-width: 110;
+        height: 88%;
         background: $surface;
         border: thick $primary;
         padding: 1 2;
@@ -1054,8 +1063,9 @@ class QuerityTUI(App[None]):
     }
     #help-dialog {
         width: 84%;
+        max-width: 100;
         height: auto;
-        max-height: 80%;
+        max-height: 85%;
         background: $surface;
         border: thick $primary 80%;
         padding: 1 2;
@@ -1076,6 +1086,7 @@ class QuerityTUI(App[None]):
     }
     #chats-dialog {
         width: 86%;
+        max-width: 110;
         height: 80%;
         background: $surface;
         border: thick $primary 80%;
@@ -1126,6 +1137,7 @@ class QuerityTUI(App[None]):
         self.fatal = False
         self._menu_suppressed_value: str | None = None
         self._pending_ingest = False
+        self._redraw_scheduled = False
         if config is not None and config.database_url:
             self.sub_title = f"{config.source_id} · {database_label(config.database_url)}"
         else:
@@ -1149,7 +1161,6 @@ class QuerityTUI(App[None]):
                 highlight=True,
                 markup=False,
                 auto_scroll=True,
-                min_width=40,
             )
             with Horizontal(id="status-bar"):
                 yield Static("", id="status")
@@ -1186,11 +1197,64 @@ class QuerityTUI(App[None]):
             return
         self._connect_database(self.config, url)
 
+    def on_resize(self, event: events.Resize) -> None:
+        self._sync_prompt_chrome(width=event.size.width)
+        if self.busy or self._redraw_scheduled:
+            return
+        self._redraw_scheduled = True
+        with contextlib.suppress(Exception):
+            self.call_after_refresh(self._redraw_transcript)
+
+    def _redraw_transcript(self) -> None:
+        self._redraw_scheduled = False
+        with contextlib.suppress(Exception):
+            transcript = self.query_one("#transcript", RichLog)
+            width = transcript.size.width or self.size.width
+            transcript.clear()
+            if self.service is None:
+                self._write_welcome(show_logo=(width >= 70))
+                return
+            stats = self.service.chat_store.stats(self.service.conversation_id)
+            messages_count = int(stats.get("messages") or 0)
+            if messages_count == 0:
+                self._write_welcome(show_logo=(width >= 70))
+                title = str(self.service.conversation.get("title") or "Data chat")
+                db_lbl = database_label(self.service.settings.source_database_url or "")
+                self._write(
+                    Text(
+                        f"Connected to {db_lbl}  ·  {title}  ·  "
+                        f"{stats.get('messages', 0)} messages · {stats.get('query_runs', 0)} queries"
+                    )
+                )
+                self._show_database_status()
+            else:
+                self._render_conversation_history(self.service.conversation_id)
+
+            if self.pending is not None:
+                if self.pending.status == "awaiting_approval":
+                    self._show_approval(self.pending)
+                elif self.pending.status == "awaiting_clarification":
+                    payload = self.pending.interrupt or {}
+                    self._write(
+                        Panel(
+                            Text(
+                                str(payload.get("question") or "Please clarify the request."),
+                                overflow="fold",
+                            ),
+                            title="Clarification needed",
+                            border_style=BRAND_WARNING,
+                        )
+                    )
+
+    def _clear_transcript(self) -> None:
+        with contextlib.suppress(Exception):
+            self.query_one("#transcript", RichLog).clear()
+
     def _write_welcome(self, *, show_logo: bool = True) -> None:
         if show_logo:
             with contextlib.suppress(Exception):
                 width = self.query_one("#transcript", RichLog).size.width
-                if width and width < 60:
+                if width and width < 70:
                     show_logo = False
         self._write(_welcome_panel(show_logo=show_logo), expand=True)
 
@@ -1270,8 +1334,7 @@ class QuerityTUI(App[None]):
         self.config = config
         self.fatal = False
         self._write(Text(f"Configuration saved to {saved}"))
-        with contextlib.suppress(Exception):
-            self.query_one("#transcript", RichLog).clear()
+        self._clear_transcript()
         self._pending_ingest = run_ingest
         url = current_url or config.database_url or self._first_saved_database()
         if url:
@@ -1392,7 +1455,8 @@ class QuerityTUI(App[None]):
         )
         self._save_config()
         stats = service.chat_store.stats(service.conversation_id)
-        self._write_welcome(show_logo=int(stats.get("messages") or 0) == 0)
+        messages = int(stats.get("messages") or 0)
+        self._write_welcome(show_logo=messages == 0)
         title = str(service.conversation.get("title") or "Data chat")
         self._write(
             Text(
@@ -1524,8 +1588,7 @@ class QuerityTUI(App[None]):
                 self._write(Text(f"Failed to create new chat: {exc}", style=BRAND_ERROR))
                 self._enable_input()
                 return
-            with contextlib.suppress(Exception):
-                self.query_one("#transcript", RichLog).clear()
+            self._clear_transcript()
             self._write_welcome()
             self._show_database_status()
             self._write(
@@ -1605,8 +1668,7 @@ class QuerityTUI(App[None]):
             url, source_schemas, metadata_schema, golden_path = result, None, None, ""
         ingest = self._pending_ingest
         self._pending_ingest = False
-        with contextlib.suppress(Exception):
-            self.query_one("#transcript", RichLog).clear()
+        self._clear_transcript()
         if self.config is None:
             self._write_welcome()
             return
@@ -1671,8 +1733,7 @@ class QuerityTUI(App[None]):
                 )
                 self._enable_input()
                 return
-            with contextlib.suppress(Exception):
-                self.query_one("#transcript", RichLog).clear()
+            self._clear_transcript()
             if self.config is None:
                 self._write_welcome()
                 self._enable_input()
@@ -1692,10 +1753,10 @@ class QuerityTUI(App[None]):
             return
         self.pending = None
         self.mode = "chat"
-        with contextlib.suppress(Exception):
-            self.query_one("#transcript", RichLog).clear()
+        self._clear_transcript()
         stats = self.service.chat_store.stats(conversation_id)
-        self._write_welcome(show_logo=int(stats.get("messages") or 0) == 0)
+        messages = int(stats.get("messages") or 0)
+        self._write_welcome(show_logo=messages == 0)
         self._show_database_status()
         self._write(
             Text(
@@ -1861,22 +1922,45 @@ class QuerityTUI(App[None]):
         with contextlib.suppress(Exception):
             self.query_one("#hints", Static).update(Text(value))
 
-    def _sync_prompt_chrome(self) -> None:
+    def _sync_prompt_chrome(self, *, width: int | None = None) -> None:
         titles = {
             "approval": "Decision",
             "clarification": "Clarification",
             "feedback": "Revision feedback",
         }
-        hints = {
-            "approval": "a approve  ·  e edit  ·  r revise  ·  x reject  ·  ? help",
-            "clarification": "enter answer",
-            "feedback": "enter send  ·  empty enter cancels",
-        }
+        if width is None:
+            with contextlib.suppress(Exception):
+                width = self.size.width
+        cols = width or 80
+
+        if cols < 65:
+            hints = {
+                "approval": "a:ok  e:edit  r:rev  x:rej  ?:help",
+                "clarification": "enter answer",
+                "feedback": "enter send  ·  empty cancels",
+                "chat": "enter send  ·  / cmds",
+            }
+        elif cols < 85:
+            hints = {
+                "approval": "a approve · e edit · r revise · x reject",
+                "clarification": "enter answer",
+                "feedback": "enter send · empty enter cancels",
+                "chat": "enter send · / commands",
+            }
+        else:
+            hints = {
+                "approval": "a approve  ·  e edit  ·  r revise  ·  x reject  ·  ? help",
+                "clarification": "enter answer",
+                "feedback": "enter send  ·  empty enter cancels",
+                "chat": _DEFAULT_HINT,
+            }
+
         if self.service is None and self.mode == "chat":
-            hints["chat"] = "/newchat connect a database"
+            hints["chat"] = "/newchat connect DB" if cols < 65 else "/newchat connect a database"
+
         with contextlib.suppress(Exception):
             self.query_one("#prompt", Input).border_title = titles.get(self.mode, "Ask Querity")
-        self._set_hints(hints.get(self.mode, _DEFAULT_HINT))
+        self._set_hints(hints.get(self.mode, hints["chat"]))
 
     def _set_placeholder(self, value: str) -> None:
         with contextlib.suppress(Exception):
@@ -1997,8 +2081,7 @@ class QuerityTUI(App[None]):
         elif canonical == "/chats":
             self.action_show_chats()
         elif canonical == "/clear":
-            with contextlib.suppress(Exception):
-                self.query_one("#transcript", RichLog).clear()
+            self._clear_transcript()
             self._write(Text("Transcript cleared. The conversation is still stored locally."))
         elif canonical == "/ingest":
             self._start_ingest()

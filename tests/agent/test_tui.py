@@ -340,3 +340,61 @@ def test_config_tracks_database_ingested_status() -> None:
     assert entry["ingested"] is True
     assert entry["table_count"] == 25
     assert config.is_database_ingested(url) is True
+
+
+def test_tui_terminal_resize_scales_layout_and_hints(monkeypatch) -> None:
+    import asyncio
+    from unittest.mock import MagicMock
+    from textual.widgets import Static
+    from querity.cli.config import CliConfig
+
+    config = CliConfig(google_api_key="google-key", nvidia_api_key="nvidia-key")
+    url = "postgresql://user:pass@localhost:5432/testdb"
+    config.remember_database(url, source_id="testdb")
+
+    mock_service = MagicMock()
+    mock_service.settings.source_url = "postgresql+psycopg://user:pass@localhost:5432/testdb"
+    mock_service.settings.source_id = "testdb"
+    mock_service.settings.source_schemas = "public"
+    mock_service.settings.metadata_schema = "querity"
+    mock_service.metadata_store.primary_source_id.return_value = "testdb"
+    mock_service.ingestion_status.return_value = {"ingested": True, "tables": 5, "last_run": None, "error": None}
+    mock_service.conversation = {"title": "Test Chat", "conversation_id": "c1"}
+    mock_service.conversation_id = "c1"
+    mock_service.chat_store.stats.return_value = {"messages": 2, "query_runs": 1, "verified_turns": 1}
+    mock_service.chat_store.get_messages.return_value = [
+        {"role": "user", "content": "How many users?"},
+        {"role": "assistant", "content": "Found 42 users.", "status": "completed", "sql": "SELECT COUNT(*) FROM users;"},
+    ]
+    mock_service.chat_store.get_query_runs.return_value = {}
+    mock_service.pending_interrupt.return_value = None
+
+    monkeypatch.setattr("querity.cli.tui.AgentService", lambda *args, **kwargs: mock_service)
+
+    async def run() -> None:
+        app = QuerityTUI(config)
+        async with app.run_test(size=(110, 50)) as pilot:
+            await pilot.pause()
+            hints_widget = app.query_one("#hints", Static)
+            # Wide hints
+            assert "ctrl+c quit" in str(hints_widget.render())
+
+            # Resize to narrow viewport (< 65 cols)
+            await pilot.resize_terminal(60, 30)
+            await pilot.pause()
+            assert "cmds" in str(hints_widget.render())
+
+            # Resize to medium viewport (< 85 cols)
+            await pilot.resize_terminal(75, 35)
+            await pilot.pause()
+            assert "/ commands" in str(hints_widget.render())
+
+            # Resize back to wide viewport (>= 85 cols)
+            await pilot.resize_terminal(100, 45)
+            await pilot.pause()
+            assert "ctrl+c quit" in str(hints_widget.render())
+
+            app.exit()
+
+    asyncio.run(run())
+
