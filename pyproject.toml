@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "querity"
-version = "0.1.0"
+version = "0.1.1"
 description = "Querity: guarded, human-in-the-loop text-to-SQL agent and terminal chat for PostgreSQL"
 readme = "README.md"
 requires-python = ">=3.12"
