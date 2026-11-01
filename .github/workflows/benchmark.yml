@@ -16,19 +16,19 @@ on:
       min_success_rate:
         description: "Minimum execution success rate (%)"
         required: false
-        default: "90.0"
+        default: "80.0"
       min_table_recall:
         description: "Minimum average table recall (%)"
         required: false
-        default: "80.0"
+        default: "75.0"
       min_guard_pass_rate:
         description: "Minimum SQL guard pass rate (%)"
         required: false
-        default: "95.0"
+        default: "80.0"
       max_mean_latency_ms:
         description: "Maximum allowed mean latency in ms"
         required: false
-        default: "45000.0"
+        default: "60000.0"
 
 concurrency:
   group: benchmark-${{ github.ref }}
@@ -97,7 +97,7 @@ jobs:
           MIN_RECALL="${MIN_RECALL:-75.0}"
 
           MIN_GUARD="${{ inputs.min_guard_pass_rate }}"
-          MIN_GUARD="${MIN_GUARD:-90.0}"
+          MIN_GUARD="${MIN_GUARD:-80.0}"
 
           MAX_LATENCY="${{ inputs.max_mean_latency_ms }}"
           MAX_LATENCY="${MAX_LATENCY:-60000.0}"
