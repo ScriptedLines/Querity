@@ -38,6 +38,7 @@ jobs:
   benchmark:
     name: Real-Database Benchmark Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       # Secrets are injected from GitHub Repository Secrets
       SOURCE_DATABASE_URL: ${{ secrets.SOURCE_DATABASE_URL }}
@@ -82,15 +83,23 @@ jobs:
       - name: Run Benchmark with Threshold Quality Gate
         if: steps.check_secrets.outputs.has_secrets == 'true'
         run: |
+          LIMIT="${{ inputs.limit }}"
           EXTRA_ARGS=""
-          if [ -n "${{ inputs.limit }}" ]; then
-            EXTRA_ARGS="$EXTRA_ARGS --limit ${{ inputs.limit }}"
+          if [ -n "$LIMIT" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --limit $LIMIT"
           fi
 
-          MIN_SUCCESS="${{ inputs.min_success_rate || '90.0' }}"
-          MIN_RECALL="${{ inputs.min_table_recall || '80.0' }}"
-          MIN_GUARD="${{ inputs.min_guard_pass_rate || '95.0' }}"
-          MAX_LATENCY="${{ inputs.max_mean_latency_ms || '45000.0' }}"
+          MIN_SUCCESS="${{ inputs.min_success_rate }}"
+          MIN_SUCCESS="${MIN_SUCCESS:-90.0}"
+
+          MIN_RECALL="${{ inputs.min_table_recall }}"
+          MIN_RECALL="${MIN_RECALL:-80.0}"
+
+          MIN_GUARD="${{ inputs.min_guard_pass_rate }}"
+          MIN_GUARD="${MIN_GUARD:-95.0}"
+
+          MAX_LATENCY="${{ inputs.max_mean_latency_ms }}"
+          MAX_LATENCY="${MAX_LATENCY:-45000.0}"
 
           uv run querity benchmark \
             --golden-path data/golden_queries.json \

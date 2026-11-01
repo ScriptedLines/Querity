@@ -7,6 +7,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
+from rich.align import Align
+from rich.color import Color
+from rich.console import Group
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.syntax import Syntax
@@ -17,6 +20,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
+from textual.theme import Theme
 from textual.widgets import (
     Button,
     Header,
@@ -39,6 +43,232 @@ from querity.cli.config import (
     source_id_from_url,
 )
 from querity.ingestion.settings import database_fingerprint, normalize_database_url
+
+BRAND_ACCENT = "#e6b566"
+BRAND_PRIMARY = "#8b8b93"
+BRAND_SECONDARY = "#f4d79f"
+BRAND_SUCCESS = "#7ccf9b"
+BRAND_WARNING = "#e8c17a"
+BRAND_ERROR = "#f08a8a"
+BRAND_FOREGROUND = "#ffffff"
+BRAND_MUTED = "#f3ecdf"
+BRAND_BACKGROUND = "#000000"
+BRAND_SURFACE = "#000000"
+BRAND_PANEL = "#0b0b0b"
+
+QUERITY_THEME = Theme(
+    name="querity",
+    primary=BRAND_PRIMARY,
+    secondary=BRAND_SECONDARY,
+    accent=BRAND_ACCENT,
+    success=BRAND_SUCCESS,
+    warning=BRAND_WARNING,
+    error=BRAND_ERROR,
+    foreground=BRAND_FOREGROUND,
+    background=BRAND_BACKGROUND,
+    surface=BRAND_SURFACE,
+    panel=BRAND_PANEL,
+    dark=True,
+)
+
+_DEFAULT_HINT = "enter send  ·  / commands  ·  ctrl+c quit"
+
+
+def _blend_hex(start: str, end: str, ratio: float) -> str:
+    first = Color.parse(start).get_truecolor()
+    second = Color.parse(end).get_truecolor()
+    channels = (
+        round(first.red + (second.red - first.red) * ratio),
+        round(first.green + (second.green - first.green) * ratio),
+        round(first.blue + (second.blue - first.blue) * ratio),
+    )
+    return "#{:02x}{:02x}{:02x}".format(*channels)
+
+
+def _brand_wordmark(value: str = "QUERITY") -> Text:
+    wordmark = Text()
+    steps = max(len(value) - 1, 1)
+    for index, character in enumerate(value):
+        color = _blend_hex(BRAND_ACCENT, BRAND_SECONDARY, index / steps)
+        wordmark.append(character, style=f"bold {color}")
+    return wordmark
+
+
+def _brand_line() -> Text:
+    line = Text()
+    line.append("◈ ", style=f"bold {BRAND_ACCENT}")
+    line.append_text(_brand_wordmark())
+    return line
+
+
+_LOGO_HEIGHT = 5
+
+_LOGO_GLYPHS: dict[str, tuple[str, ...]] = {
+    "Q": (
+        ".#####.",
+        "##...##",
+        "##...##",
+        "##..###",
+        ".#####.",
+    ),
+    "U": (
+        "##...##",
+        "##...##",
+        "##...##",
+        "##...##",
+        ".#####.",
+    ),
+    "E": (
+        "#######",
+        "##.....",
+        "######.",
+        "##.....",
+        "#######",
+    ),
+    "R": (
+        "######.",
+        "##...##",
+        "######.",
+        "##..##.",
+        "##...##",
+    ),
+    "I": (
+        "#######",
+        "...#...",
+        "...#...",
+        "...#...",
+        "#######",
+    ),
+    "T": (
+        "#######",
+        "...#...",
+        "...#...",
+        "...#...",
+        "...#...",
+    ),
+    "Y": (
+        "##...##",
+        "##...##",
+        ".#####.",
+        "...#...",
+        "...#...",
+    ),
+}
+
+
+def _logo_lines(value: str = "QUERITY") -> list[str]:
+    rows = ["" for _ in range(_LOGO_HEIGHT)]
+    for index, letter in enumerate(value):
+        glyph = _LOGO_GLYPHS.get(letter)
+        if glyph is None:
+            continue
+        if index:
+            rows = [row + " " for row in rows]
+        rows = [row + pattern for row, pattern in zip(rows, glyph, strict=True)]
+    return rows
+
+
+def _hero_logo(value: str = "QUERITY") -> Text:
+    rows = _logo_lines(value)
+    line_width = max((len(row) for row in rows), default=0)
+    logo = Text()
+    steps = max(line_width - 1, 1)
+    for row_index, row in enumerate(rows):
+        for column, cell in enumerate(row):
+            if cell == "#":
+                color = _blend_hex(BRAND_ACCENT, BRAND_FOREGROUND, column / steps)
+                logo.append(" ", style=f"on {color}")
+            else:
+                logo.append(" ")
+        logo.append("█", style=f"{BRAND_BACKGROUND} on {BRAND_BACKGROUND}")
+        if row_index < len(rows) - 1:
+            logo.append("\n")
+    return logo
+
+
+def _empty_state() -> Group:
+    state = Text(justify="center")
+    state.append("\n")
+    state.append_text(_hero_logo())
+    state.append("\n\n")
+    state.append("guarded, human-in-the-loop text-to-SQL", style=f"italic {BRAND_MUTED}")
+    state.append("\n\n")
+    state.append(
+        "Ask a question in plain language. Querity drafts SQL, validates it\n"
+        "as read-only, and waits for your approval before anything runs.",
+        style=BRAND_FOREGROUND,
+    )
+    state.append("\n\n")
+
+    hints = Table.grid(padding=(0, 4))
+    hints.add_column(style=f"bold {BRAND_FOREGROUND}", no_wrap=True)
+    hints.add_column(style=BRAND_MUTED, no_wrap=True)
+    hints.add_column(style=f"bold {BRAND_FOREGROUND}", no_wrap=True)
+    hints.add_column(style=BRAND_MUTED, no_wrap=True)
+    hints.add_row("/newchat", "new conversation", "/database", "switch or connect")
+    hints.add_row("/help", "all commands", "/status", "catalog and model status")
+    return Group(state, Align(hints, "center"))
+
+
+def _welcome_panel(*, show_logo: bool = True) -> Panel | Group:
+    if show_logo:
+        return _empty_state()
+
+    brand = Text()
+    brand.append_text(_brand_line())
+    brand.append("\n")
+    brand.append("guarded, human-in-the-loop text-to-SQL", style=f"italic {BRAND_MUTED}")
+
+    body = Text()
+    body.append(
+        "Ask a question in plain language. Querity maps your schema, drafts SQL,\n"
+        "validates it as read-only, and waits for your approval before anything runs.\n",
+        style=BRAND_FOREGROUND,
+    )
+    body.append("\n")
+    body.append("/newchat", style=f"bold {BRAND_FOREGROUND}")
+    body.append("  new conversation", style=BRAND_MUTED)
+    body.append("        ")
+    body.append("/database", style=f"bold {BRAND_FOREGROUND}")
+    body.append("  switch or connect", style=BRAND_MUTED)
+    body.append("\n")
+    body.append("/help", style=f"bold {BRAND_FOREGROUND}")
+    body.append("     all commands", style=BRAND_MUTED)
+    body.append("            ")
+    body.append("/status", style=f"bold {BRAND_FOREGROUND}")
+    body.append("    catalog and model status", style=BRAND_MUTED)
+    body.append("\n\n")
+    body.append(
+        "Each database is indexed once; chats and history stay scoped to that database.",
+        style=f"italic {BRAND_MUTED}",
+    )
+
+    return Panel(
+        Text.assemble(brand, "\n\n", body),
+        border_style=BRAND_PRIMARY,
+        padding=(0, 2),
+    )
+
+
+def _status_text(value: str) -> Text:
+    lowered = value.lower()
+    if lowered.startswith("ready"):
+        color = BRAND_SUCCESS
+    elif any(word in lowered for word in ("fail", "error", "invalid", "could not")):
+        color = BRAND_ERROR
+    elif lowered.startswith("working") or lowered.startswith("indexing"):
+        color = BRAND_ACCENT
+    elif any(
+        word in lowered
+        for word in ("awaiting", "wait", "choose", "no database", "resolve", "select")
+    ):
+        color = BRAND_WARNING
+    else:
+        color = BRAND_MUTED
+    text = Text()
+    text.append("● ", style=f"bold {color}")
+    text.append(value, style=color)
+    return text
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -213,6 +443,7 @@ class DatabaseScreen(ModalScreen[tuple[str, str, str, str] | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="database-dialog"):
+            yield Static(_brand_line(), classes="brand-mark")
             yield Static(
                 Text(
                     "Connect or select a database. Ingestion and catalog schemas are "
@@ -334,13 +565,13 @@ class DatabaseScreen(ModalScreen[tuple[str, str, str, str] | None]):
                         selected_url = str(option.id)
         if not selected_url:
             self.query_one("#database-error", Static).update(
-                Text("Select a database from the list or enter a PostgreSQL URL.", style="red")
+                Text("Select a database from the list or enter a PostgreSQL URL.", style=BRAND_ERROR)
             )
             return
         try:
             normalized_url = normalize_database_url(selected_url)
         except Exception as exc:
-            self.query_one("#database-error", Static).update(Text(str(exc), style="red"))
+            self.query_one("#database-error", Static).update(Text(str(exc), style=BRAND_ERROR))
             return
 
         source_schemas = (
@@ -354,7 +585,7 @@ class DatabaseScreen(ModalScreen[tuple[str, str, str, str] | None]):
             p = Path(golden_path).expanduser()
             if not p.exists():
                 self.query_one("#database-error", Static).update(
-                    Text(f"Golden queries file not found: {golden_path}", style="red")
+                    Text(f"Golden queries file not found: {golden_path}", style=BRAND_ERROR)
                 )
                 return
         self.dismiss((normalized_url, source_schemas, metadata_schema, golden_path))
@@ -432,6 +663,7 @@ class SetupScreen(ModalScreen[tuple[CliConfig, bool] | None]):
         existing = self.config
         provider = existing.llm_provider if existing else "google"
         with Vertical(id="setup-dialog"):
+            yield Static(_brand_line(), classes="brand-mark")
             yield Static(
                 Text(
                     "Choose the models and API keys. Databases, schemas, and golden queries "
@@ -587,7 +819,7 @@ class SetupScreen(ModalScreen[tuple[CliConfig, bool] | None]):
         try:
             config = self._build_config()
         except Exception as exc:
-            self.query_one("#setup-error", Static).update(Text(str(exc), style="red"))
+            self.query_one("#setup-error", Static).update(Text(str(exc), style=BRAND_ERROR))
             return
         self.dismiss((config, True))
 
@@ -609,6 +841,7 @@ class ChatsScreen(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="chats-dialog"):
+            yield Static(_brand_line(), classes="brand-mark")
             yield Static(
                 Text("Choose a saved chat, or start a new one."),
                 id="chats-title",
@@ -658,49 +891,133 @@ class QuerityTUI(App[None]):
     Screen {
         background: $background;
     }
+    Header {
+        background: $panel;
+        color: $foreground;
+    }
+    HeaderIcon {
+        color: $accent;
+    }
+    HeaderClock {
+        color: $foreground 70%;
+        background: transparent;
+    }
     #body {
         height: 1fr;
         padding: 0 1;
     }
     #transcript {
         height: 1fr;
-        border: round $primary 30%;
+        border: round $primary 40%;
+        border-title-color: $foreground;
+        border-title-align: left;
+        border-subtitle-color: $foreground 75%;
+        border-subtitle-align: right;
         padding: 0 1;
         scrollbar-size: 1 1;
+        scrollbar-background: $panel;
+        scrollbar-color: $primary 45%;
+        scrollbar-color-hover: $accent 70%;
+        scrollbar-color-active: $accent;
+    }
+    #transcript:focus {
+        border: round $primary 55%;
+    }
+    #status-bar {
+        height: 1;
+        padding: 0 1;
+        background: $panel;
     }
     #status {
+        width: 1fr;
         height: 1;
-        color: $text-muted;
-        padding: 0 1;
+        content-align: left middle;
+    }
+    #hints {
+        width: auto;
+        height: 1;
+        color: $foreground 75%;
+        text-align: right;
+        text-wrap: nowrap;
+        text-overflow: ellipsis;
+        content-align: right middle;
     }
     #command-menu {
         display: none;
         height: auto;
-        max-height: 12;
+        max-height: 14;
         margin: 0 1;
+        padding: 0 1;
+        background: $panel;
+        border: round $primary 50%;
+        border-title-color: $foreground;
+        border-title-align: left;
+        border-subtitle-color: $foreground 75%;
+        border-subtitle-align: right;
+        scrollbar-background: $panel;
+        scrollbar-color: $primary 45%;
+    }
+    #command-menu > .option-list--option-highlighted,
+    #command-menu:focus > .option-list--option-highlighted {
+        background: $accent 18%;
+        color: $foreground;
     }
     #prompt {
         height: 3;
+        background: $surface;
         border: round $accent;
+        border-title-color: $accent;
+        border-title-align: left;
     }
     #prompt:focus {
         border: round $accent;
+        background-tint: $accent 4%;
+    }
+    #prompt:disabled {
+        border: round $primary 20%;
+        opacity: 70%;
+    }
+    Input, Select, TextArea {
+        background: $panel;
+        border: tall $primary 30%;
+    }
+    Input:focus, Select:focus, TextArea:focus {
+        border: tall $accent;
+    }
+    Input > .input--placeholder {
+        color: $foreground 55%;
+    }
+    Button {
+        min-width: 12;
+    }
+    Button:focus {
+        border: tall $accent;
     }
     #dialog, #sql-dialog {
         width: 80%;
         background: $surface;
-        border: thick $primary;
+        border: thick $primary 80%;
         padding: 1 2;
     }
     #sql-dialog {
         width: 92%;
         height: 82%;
     }
+    .brand-mark {
+        height: auto;
+        padding: 0 0 1 0;
+    }
+    #setup-form, #database-form, #database-list, #chats-list {
+        scrollbar-background: $surface;
+        scrollbar-color: $primary 45%;
+        scrollbar-color-hover: $accent 70%;
+        scrollbar-color-active: $accent;
+    }
     #setup-dialog {
         width: 92%;
         height: 92%;
         background: $surface;
-        border: thick $primary;
+        border: thick $primary 80%;
         padding: 1 2;
     }
     #setup-title {
@@ -712,12 +1029,12 @@ class QuerityTUI(App[None]):
     }
     .field-label {
         margin-top: 1;
-        color: $text-muted;
+        color: $foreground;
         text-style: bold;
     }
     .field-hint {
         margin-top: 1;
-        color: $text-muted;
+        color: $foreground;
         text-style: italic;
     }
     #setup-error, #database-error {
@@ -740,7 +1057,7 @@ class QuerityTUI(App[None]):
         height: auto;
         max-height: 80%;
         background: $surface;
-        border: thick $primary;
+        border: thick $primary 80%;
         padding: 1 2;
     }
     #database-title {
@@ -750,7 +1067,8 @@ class QuerityTUI(App[None]):
     #database-list {
         height: auto;
         max-height: 7;
-        border: round $primary 30%;
+        border: round $primary 35%;
+        background: $panel;
     }
     #help-text {
         height: auto;
@@ -760,7 +1078,7 @@ class QuerityTUI(App[None]):
         width: 86%;
         height: 80%;
         background: $surface;
-        border: thick $primary;
+        border: thick $primary 80%;
         padding: 1 2;
     }
     #chats-title {
@@ -769,7 +1087,8 @@ class QuerityTUI(App[None]):
     }
     #chats-list {
         height: 1fr;
-        border: round $primary 30%;
+        border: round $primary 35%;
+        background: $panel;
     }
     #dialog-title {
         padding: 0 0 1 0;
@@ -797,6 +1116,8 @@ class QuerityTUI(App[None]):
 
     def __init__(self, config: CliConfig | None = None) -> None:
         super().__init__()
+        self.register_theme(QUERITY_THEME)
+        self.theme = QUERITY_THEME.name
         self.config = config
         self.service: AgentService | None = None
         self.pending: AgentTurnResult | None = None
@@ -810,8 +1131,17 @@ class QuerityTUI(App[None]):
         else:
             self.sub_title = "Setup" if config is None else "No database selected"
 
+    def format_title(self, title: str, sub_title: str) -> Text:
+        line = Text()
+        line.append("◈ ", style=f"bold {BRAND_ACCENT}")
+        line.append_text(_brand_wordmark(title.upper() or "QUERITY"))
+        if sub_title:
+            line.append("   ")
+            line.append(sub_title, style=BRAND_MUTED)
+        return line
+
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
+        yield Header(show_clock=True, icon="◆", time_format="%H:%M")
         with Vertical(id="body"):
             yield RichLog(
                 id="transcript",
@@ -821,7 +1151,9 @@ class QuerityTUI(App[None]):
                 auto_scroll=True,
                 min_width=40,
             )
-            yield Static("", id="status")
+            with Horizontal(id="status-bar"):
+                yield Static("", id="status")
+                yield Static(_DEFAULT_HINT, id="hints")
             yield OptionList(id="command-menu")
             yield PromptInput(
                 placeholder="Ask a question about your data, or type / for commands",
@@ -829,8 +1161,16 @@ class QuerityTUI(App[None]):
             )
 
     def on_mount(self) -> None:
-        self._write_welcome()
+        with contextlib.suppress(Exception):
+            transcript = self.query_one("#transcript", RichLog)
+            transcript.border_title = "Conversation"
+            transcript.border_subtitle = "read-only · approval required"
+            commands = self.query_one("#command-menu", OptionList)
+            commands.border_title = "Commands"
+            commands.border_subtitle = "enter to run"
+        self._sync_prompt_chrome()
         if self.config is None:
+            self._write_welcome()
             self._set_status("Choose models and API keys to start")
             self._disable_input()
             self.push_screen(
@@ -840,27 +1180,19 @@ class QuerityTUI(App[None]):
             return
         url = self.config.database_url or self._first_saved_database()
         if not url:
+            self._write_welcome()
             self._set_status("No database selected · type /database")
             self._enable_input()
             return
         self._connect_database(self.config, url)
 
-    def _write_welcome(self) -> None:
-        self._write(
-            Panel(
-                Text(
-                    "Ask questions in natural language. Every generated query is validated\n"
-                    "and shown to you before it runs. Only read-only SELECT statements are\n"
-                    "accepted.\n\n"
-                    "Ingestion is database-specific: each database is indexed once.\n"
-                    "Use /newchat to start a fresh chat on the active database.\n"
-                    "Use /database to switch or connect databases. Type / for commands, /help for help.",
-                    overflow="fold",
-                ),
-                title="Querity",
-                border_style="cyan",
-            )
-        )
+    def _write_welcome(self, *, show_logo: bool = True) -> None:
+        if show_logo:
+            with contextlib.suppress(Exception):
+                width = self.query_one("#transcript", RichLog).size.width
+                if width and width < 60:
+                    show_logo = False
+        self._write(_welcome_panel(show_logo=show_logo), expand=True)
 
     def _first_saved_database(self) -> str:
         if self.config is None:
@@ -908,7 +1240,7 @@ class QuerityTUI(App[None]):
             self.config.save()
         except Exception as exc:
             self._write(
-                Text(f"Could not save configuration: {type(exc).__name__}: {exc}", style="yellow")
+                Text(f"Could not save configuration: {type(exc).__name__}: {exc}", style=BRAND_WARNING)
             )
 
     def _setup_done(self, result: tuple[CliConfig, bool] | None) -> None:
@@ -926,7 +1258,7 @@ class QuerityTUI(App[None]):
                 Panel(
                     Text(f"{type(exc).__name__}: {exc}", overflow="fold"),
                     title="Could not save settings",
-                    border_style="red",
+                    border_style=BRAND_ERROR,
                 )
             )
             self.push_screen(
@@ -940,13 +1272,13 @@ class QuerityTUI(App[None]):
         self._write(Text(f"Configuration saved to {saved}"))
         with contextlib.suppress(Exception):
             self.query_one("#transcript", RichLog).clear()
-        self._write_welcome()
         self._pending_ingest = run_ingest
         url = current_url or config.database_url or self._first_saved_database()
         if url:
             self._connect_database(config, url, ingest=run_ingest)
             self._pending_ingest = False
             return
+        self._write_welcome()
         self._set_status("Choose a database to start")
         self._enable_input()
         self.action_select_database()
@@ -967,7 +1299,7 @@ class QuerityTUI(App[None]):
             normalized = normalize_database_url(url)
         except Exception as exc:
             self._set_status("Invalid database URL")
-            self._write(Text(str(exc), style="red"))
+            self._write(Text(str(exc), style=BRAND_ERROR))
             self._enable_input()
             return False
         entry = self._database_entry(normalized)
@@ -1022,11 +1354,12 @@ class QuerityTUI(App[None]):
         except Exception as exc:
             self.fatal = self.service is None
             self._set_status("Could not connect · type /newchat")
+            self._write_welcome()
             self._write(
                 Panel(
                     Text(f"{type(exc).__name__}: {exc}", overflow="fold"),
                     title="Could not connect",
-                    border_style="red",
+                    border_style=BRAND_ERROR,
                 )
             )
             self._enable_input()
@@ -1047,7 +1380,7 @@ class QuerityTUI(App[None]):
             elif conversation_id:
                 service.open_conversation(conversation_id)
         except Exception as exc:
-            self._write(Text(f"{type(exc).__name__}: {exc}", style="red"))
+            self._write(Text(f"{type(exc).__name__}: {exc}", style=BRAND_ERROR))
             self._enable_input()
             return False
         config.remember_database(
@@ -1059,6 +1392,7 @@ class QuerityTUI(App[None]):
         )
         self._save_config()
         stats = service.chat_store.stats(service.conversation_id)
+        self._write_welcome(show_logo=int(stats.get("messages") or 0) == 0)
         title = str(service.conversation.get("title") or "Data chat")
         self._write(
             Text(
@@ -1078,7 +1412,7 @@ class QuerityTUI(App[None]):
                         overflow="fold",
                     ),
                     title="Recovered session",
-                    border_style="yellow",
+                    border_style=BRAND_WARNING,
                 )
             )
             self._handle_turn_result(pending)
@@ -1087,20 +1421,19 @@ class QuerityTUI(App[None]):
         is_already_ingested = bool(status_info.get("ingested")) or bool(entry.get("ingested"))
         needs_ingest = not is_already_ingested
 
-        if is_already_ingested:
-            if self.config is not None:
-                self.config.mark_database_ingested(
-                    normalized,
-                    ingested=True,
-                    table_count=int(status_info.get("tables") or entry.get("table_count") or 0),
-                )
-                self._save_config()
+        if is_already_ingested and self.config is not None:
+            self.config.mark_database_ingested(
+                normalized,
+                ingested=True,
+                table_count=int(status_info.get("tables") or entry.get("table_count") or 0),
+            )
+            self._save_config()
 
         if needs_ingest:
             self._write(
                 Text(
                     f"Database '{database_label(normalized)}' has not been indexed yet. Starting initial ingestion...",
-                    style="cyan",
+                    style=BRAND_ACCENT,
                 )
             )
             self._start_ingest()
@@ -1133,7 +1466,7 @@ class QuerityTUI(App[None]):
         else:
             lines.append("Catalog  : NOT ingested yet")
             lines.append("Hint     : type /ingest to index this database before querying.")
-        border = "green" if status.get("ingested") and not status.get("error") else "yellow"
+        border = BRAND_SUCCESS if status.get("ingested") and not status.get("error") else BRAND_WARNING
         self._write(
             Panel(
                 Text("\n".join(lines), overflow="fold"),
@@ -1158,11 +1491,11 @@ class QuerityTUI(App[None]):
         if self._modal_open():
             return
         if self.busy:
-            self._write(Text("Wait for the current operation to finish.", style="yellow"))
+            self._write(Text("Wait for the current operation to finish.", style=BRAND_WARNING))
             return
         if self.pending is not None:
             self._write(
-                Text("Resolve the pending request before changing settings.", style="yellow")
+                Text("Resolve the pending request before changing settings.", style=BRAND_WARNING)
             )
             return
         self.push_screen(
@@ -1174,21 +1507,21 @@ class QuerityTUI(App[None]):
         if self._modal_open():
             return
         if self.busy:
-            self._write(Text("Wait for the current operation to finish.", style="yellow"))
+            self._write(Text("Wait for the current operation to finish.", style=BRAND_WARNING))
             return
         if self.pending is not None:
             self._write(
-                Text("Resolve the pending request before starting a new chat.", style="yellow")
+                Text("Resolve the pending request before starting a new chat.", style=BRAND_WARNING)
             )
             return
         if self.config is None:
-            self._write(Text("Finish setup before starting a chat.", style="yellow"))
+            self._write(Text("Finish setup before starting a chat.", style=BRAND_WARNING))
             return
         if self.service is not None:
             try:
                 self.service.new_conversation()
             except Exception as exc:
-                self._write(Text(f"Failed to create new chat: {exc}", style="red"))
+                self._write(Text(f"Failed to create new chat: {exc}", style=BRAND_ERROR))
                 self._enable_input()
                 return
             with contextlib.suppress(Exception):
@@ -1198,7 +1531,7 @@ class QuerityTUI(App[None]):
             self._write(
                 Text(
                     f"Started new chat on {database_label(self.service.settings.source_url)}",
-                    style="bold green",
+                    style=f"bold {BRAND_SUCCESS}",
                 )
             )
             self._set_status("Ready")
@@ -1211,15 +1544,15 @@ class QuerityTUI(App[None]):
         if self._modal_open():
             return
         if self.busy:
-            self._write(Text("Wait for the current operation to finish.", style="yellow"))
+            self._write(Text("Wait for the current operation to finish.", style=BRAND_WARNING))
             return
         if self.pending is not None:
             self._write(
-                Text("Resolve the pending request before switching databases.", style="yellow")
+                Text("Resolve the pending request before switching databases.", style=BRAND_WARNING)
             )
             return
         if self.config is None:
-            self._write(Text("Finish setup before choosing a database.", style="yellow"))
+            self._write(Text("Finish setup before choosing a database.", style=BRAND_WARNING))
             return
         current_url = self.service.settings.source_url if self.service is not None else ""
         default_golden = ""
@@ -1274,8 +1607,8 @@ class QuerityTUI(App[None]):
         self._pending_ingest = False
         with contextlib.suppress(Exception):
             self.query_one("#transcript", RichLog).clear()
-        self._write_welcome()
         if self.config is None:
+            self._write_welcome()
             return
         connected = self._connect_database(
             self.config,
@@ -1295,10 +1628,10 @@ class QuerityTUI(App[None]):
         if self.service is None:
             return
         if self.busy:
-            self._write(Text("Wait for the current operation to finish.", style="yellow"))
+            self._write(Text("Wait for the current operation to finish.", style=BRAND_WARNING))
             return
         if self.pending is not None:
-            self._write(Text("Resolve the pending request before switching chats.", style="yellow"))
+            self._write(Text("Resolve the pending request before switching chats.", style=BRAND_WARNING))
             return
         self.push_screen(
             ChatsScreen(self.service.conversations(), self.service.conversation_id),
@@ -1320,7 +1653,7 @@ class QuerityTUI(App[None]):
             return
         conversation = self.service.chat_store.get_conversation(conversation_id)
         if conversation is None:
-            self._write(Text("Conversation not found.", style="red"))
+            self._write(Text("Conversation not found.", style=BRAND_ERROR))
             self._enable_input()
             return
         current_fingerprint = self.service.settings.db_fingerprint
@@ -1333,15 +1666,18 @@ class QuerityTUI(App[None]):
                     Text(
                         "This chat belongs to a database that is no longer configured. "
                         "Use /newchat to reconnect to it.",
-                        style="yellow",
+                        style=BRAND_WARNING,
                     )
                 )
                 self._enable_input()
                 return
             with contextlib.suppress(Exception):
                 self.query_one("#transcript", RichLog).clear()
-            self._write_welcome()
-            if self.config is None or not self._connect_database(
+            if self.config is None:
+                self._write_welcome()
+                self._enable_input()
+                return
+            if not self._connect_database(
                 self.config,
                 url,
                 conversation_id=conversation_id,
@@ -1351,16 +1687,16 @@ class QuerityTUI(App[None]):
         try:
             conversation = self.service.open_conversation(conversation_id)
         except Exception as exc:
-            self._write(Text(str(exc), style="red"))
+            self._write(Text(str(exc), style=BRAND_ERROR))
             self._enable_input()
             return
         self.pending = None
         self.mode = "chat"
         with contextlib.suppress(Exception):
             self.query_one("#transcript", RichLog).clear()
-        self._write_welcome()
-        self._show_database_status()
         stats = self.service.chat_store.stats(conversation_id)
+        self._write_welcome(show_logo=int(stats.get("messages") or 0) == 0)
+        self._show_database_status()
         self._write(
             Text(
                 f"Opened {conversation.get('title') or 'chat'}  ·  "
@@ -1382,7 +1718,7 @@ class QuerityTUI(App[None]):
         if not messages:
             return
         runs = self.service.chat_store.get_query_runs(conversation_id)
-        self._write(Rule(f"Chat history · {len(messages)} messages", style="cyan dim"))
+        self._write(Rule(f"Chat history · {len(messages)} messages", style=f"{BRAND_ACCENT} dim"))
 
         for message in messages:
             role = str(message.get("role") or "").lower()
@@ -1392,7 +1728,7 @@ class QuerityTUI(App[None]):
 
             if role == "user":
                 self._write(
-                    Panel(Text(content, overflow="fold"), title="You", border_style="blue")
+                    Panel(Text(content, overflow="fold"), title="You", border_style=BRAND_PRIMARY)
                 )
             elif role == "assistant":
                 sql = str(message.get("sql") or (run.get("sql") if run else "") or "").strip()
@@ -1407,7 +1743,7 @@ class QuerityTUI(App[None]):
                             Panel(
                                 Text(explanation, overflow="fold"),
                                 title="Assistant",
-                                border_style="cyan",
+                                border_style=BRAND_ACCENT,
                             )
                         )
 
@@ -1416,7 +1752,7 @@ class QuerityTUI(App[None]):
                             Panel(
                                 Syntax(sql, "sql", theme="monokai", word_wrap=True),
                                 title="Executed SQL",
-                                border_style="cyan",
+                                border_style=BRAND_ACCENT,
                             )
                         )
 
@@ -1452,7 +1788,7 @@ class QuerityTUI(App[None]):
                         body += f"  ·  {duration_ms} ms"
                     if truncated:
                         body += "  (truncated)"
-                    self._write(Panel(Text(body), title="Result", border_style="green"))
+                    self._write(Panel(Text(body), title="Result", border_style=BRAND_SUCCESS))
 
                     if columns and rows:
                         self._write(_rows_table(columns, rows))
@@ -1465,12 +1801,12 @@ class QuerityTUI(App[None]):
                             Panel(
                                 Syntax(sql, "sql", theme="monokai", word_wrap=True),
                                 title="Failed SQL",
-                                border_style="red",
+                                border_style=BRAND_ERROR,
                             )
                         )
                     error = (run.get("error") if run else "") or content or "The request failed."
                     self._write(
-                        Panel(Text(error, overflow="fold"), title="Failed", border_style="red")
+                        Panel(Text(error, overflow="fold"), title="Failed", border_style=BRAND_ERROR)
                     )
 
                 elif status == "rejected":
@@ -1479,7 +1815,7 @@ class QuerityTUI(App[None]):
                             Panel(
                                 Syntax(sql, "sql", theme="monokai", word_wrap=True),
                                 title="Rejected SQL",
-                                border_style="yellow",
+                                border_style=BRAND_WARNING,
                             )
                         )
                     reason = (
@@ -1489,7 +1825,7 @@ class QuerityTUI(App[None]):
                         Panel(
                             Text(reason, overflow="fold"),
                             title="Rejected",
-                            border_style="yellow",
+                            border_style=BRAND_WARNING,
                         )
                     )
 
@@ -1499,7 +1835,7 @@ class QuerityTUI(App[None]):
                             Panel(
                                 Syntax(sql, "sql", theme="monokai", word_wrap=True),
                                 title="Proposed SQL",
-                                border_style="cyan",
+                                border_style=BRAND_ACCENT,
                             )
                         )
                     if content:
@@ -1507,23 +1843,45 @@ class QuerityTUI(App[None]):
                             Panel(
                                 Text(content, overflow="fold"),
                                 title="Assistant",
-                                border_style="cyan",
+                                border_style=BRAND_ACCENT,
                             )
                         )
 
         self._write(Rule(style="dim"))
 
-    def _write(self, renderable: Any) -> None:
+    def _write(self, renderable: Any, *, expand: bool = False) -> None:
         with contextlib.suppress(Exception):
-            self.query_one("#transcript", RichLog).write(renderable)
+            self.query_one("#transcript", RichLog).write(renderable, expand=expand)
 
     def _set_status(self, value: str) -> None:
         with contextlib.suppress(Exception):
-            self.query_one("#status", Static).update(Text(value))
+            self.query_one("#status", Static).update(_status_text(value))
+
+    def _set_hints(self, value: str) -> None:
+        with contextlib.suppress(Exception):
+            self.query_one("#hints", Static).update(Text(value))
+
+    def _sync_prompt_chrome(self) -> None:
+        titles = {
+            "approval": "Decision",
+            "clarification": "Clarification",
+            "feedback": "Revision feedback",
+        }
+        hints = {
+            "approval": "a approve  ·  e edit  ·  r revise  ·  x reject  ·  ? help",
+            "clarification": "enter answer",
+            "feedback": "enter send  ·  empty enter cancels",
+        }
+        if self.service is None and self.mode == "chat":
+            hints["chat"] = "/newchat connect a database"
+        with contextlib.suppress(Exception):
+            self.query_one("#prompt", Input).border_title = titles.get(self.mode, "Ask Querity")
+        self._set_hints(hints.get(self.mode, _DEFAULT_HINT))
 
     def _set_placeholder(self, value: str) -> None:
         with contextlib.suppress(Exception):
             self.query_one("#prompt", Input).placeholder = value
+        self._sync_prompt_chrome()
 
     def _enable_input(self) -> None:
         self.busy = False
@@ -1562,10 +1920,10 @@ class QuerityTUI(App[None]):
             self._handle_command(value)
             return
         if self.fatal or self.service is None:
-            self._write(Text("Choose a database first with /newchat.", style="yellow"))
+            self._write(Text("Choose a database first with /newchat.", style=BRAND_WARNING))
             return
         if self.busy:
-            self._write(Text("Still working on the previous request.", style="yellow"))
+            self._write(Text("Still working on the previous request.", style=BRAND_WARNING))
             return
         if self.mode == "approval":
             self._handle_approval_input(value)
@@ -1578,14 +1936,14 @@ class QuerityTUI(App[None]):
         if self.mode == "feedback":
             if not value:
                 self.mode = "approval"
-                self._write(Text("Revision cancelled; still awaiting approval.", style="yellow"))
+                self._write(Text("Revision cancelled; still awaiting approval.", style=BRAND_WARNING))
                 self._enable_input()
                 return
             self._resume(HumanDecision(kind="revise", feedback=value))
             return
         if not value:
             return
-        self._write(Panel(Text(value), title="You", border_style="blue"))
+        self._write(Panel(Text(value), title="You", border_style=BRAND_PRIMARY))
         self._start_agent(value)
 
     def _handle_approval_input(self, value: str) -> None:
@@ -1605,7 +1963,7 @@ class QuerityTUI(App[None]):
             self._write(
                 Text(
                     "Choose a=approve, e=edit, r=revise, x=reject, or ? for help.",
-                    style="yellow",
+                    style=BRAND_WARNING,
                 )
             )
 
@@ -1614,11 +1972,11 @@ class QuerityTUI(App[None]):
         name = name.lower()
         resolved = _resolve_command(name)
         if resolved is None:
-            self._write(Text(f"Unknown command {name}. Type /help.", style="yellow"))
+            self._write(Text(f"Unknown command {name}. Type /help.", style=BRAND_WARNING))
             return
         canonical = resolved.name
         if canonical in {"/status", "/history", "/chats", "/ingest"} and self.service is None:
-            self._write(Text("Choose a database first with /database.", style="yellow"))
+            self._write(Text("Choose a database first with /database.", style=BRAND_WARNING))
             return
         if canonical == "/quit":
             self.exit()
@@ -1673,9 +2031,9 @@ class QuerityTUI(App[None]):
             menu.add_option(
                 Option(
                     Text.assemble(
-                        (command.name, "bold cyan"),
+                        (command.name, f"bold {BRAND_FOREGROUND}"),
                         "  ",
-                        (command.description, "dim"),
+                        (command.description, BRAND_MUTED),
                     ),
                     id=command.name,
                 )
@@ -1738,7 +2096,7 @@ class QuerityTUI(App[None]):
                 Text(
                     "This query failed deterministic validation and cannot be approved. "
                     "Edit it or reject it.",
-                    style="red",
+                    style=BRAND_ERROR,
                 )
             )
             return
@@ -1756,7 +2114,7 @@ class QuerityTUI(App[None]):
         if value:
             self._resume(HumanDecision(kind="edit", sql=value, pre_approve=True))
         else:
-            self._write(Text("Edit cancelled.", style="yellow"))
+            self._write(Text("Edit cancelled.", style=BRAND_WARNING))
             self._enable_input()
 
     def _reject(self) -> None:
@@ -1836,7 +2194,7 @@ class QuerityTUI(App[None]):
             Panel(
                 Text(f"{type(exc).__name__}: {exc}", overflow="fold"),
                 title="Agent error",
-                border_style="red",
+                border_style=BRAND_ERROR,
             )
         )
 
@@ -1858,7 +2216,7 @@ class QuerityTUI(App[None]):
                         overflow="fold",
                     ),
                     title="Clarification needed",
-                    border_style="yellow",
+                    border_style=BRAND_WARNING,
                 )
             )
             self._enable_input()
@@ -1892,13 +2250,13 @@ class QuerityTUI(App[None]):
             lines.append("Assumptions:")
             lines.extend(f"  - {item}" for item in assumptions)
         self._write(
-            Panel(Text("\n".join(lines), overflow="fold"), title="Question", border_style="blue")
+            Panel(Text("\n".join(lines), overflow="fold"), title="Question", border_style=BRAND_PRIMARY)
         )
         self._write(
             Panel(
                 Syntax(sql, "sql", theme="monokai", word_wrap=True),
                 title="Proposed SQL",
-                border_style="cyan",
+                border_style=BRAND_ACCENT,
             )
         )
         issues: list[tuple[str, str, str]] = []
@@ -1928,7 +2286,7 @@ class QuerityTUI(App[None]):
                 Panel(
                     Text(body, overflow="fold"),
                     title="Reviewer",
-                    border_style="green" if review.get("approved") else "yellow",
+                    border_style=BRAND_SUCCESS if review.get("approved") else BRAND_WARNING,
                 )
             )
         if issues:
@@ -1939,14 +2297,14 @@ class QuerityTUI(App[None]):
                 Panel(
                     Text(body, overflow="fold"),
                     title="Warnings",
-                    border_style="yellow",
+                    border_style=BRAND_WARNING,
                 )
             )
         if payload.get("can_approve"):
             hint = "a=approve  e=edit  r=revise  x=reject  ?=help"
         else:
             hint = "Guard blocked approval: e=edit  r=revise  x=reject  ?=help"
-        self._write(Text(hint, style="bold yellow"))
+        self._write(Text(hint, style=f"bold {BRAND_WARNING}"))
 
     def _show_final(self, result: AgentTurnResult) -> None:
         state = result.state
@@ -1955,7 +2313,7 @@ class QuerityTUI(App[None]):
             body = f"Rows: {execution.row_count}  ·  {execution.duration_ms} ms" + (
                 "  (truncated)" if execution.truncated else ""
             )
-            self._write(Panel(Text(body), title="Result", border_style="green"))
+            self._write(Panel(Text(body), title="Result", border_style=BRAND_SUCCESS))
             if execution.columns:
                 self._write(_rows_table(execution.columns, execution.rows))
             else:
@@ -1963,16 +2321,16 @@ class QuerityTUI(App[None]):
             return
         if result.status == "failed":
             message = result.error or str(state.get("final_message") or "The request failed.")
-            self._write(Panel(Text(message, overflow="fold"), title="Failed", border_style="red"))
+            self._write(Panel(Text(message, overflow="fold"), title="Failed", border_style=BRAND_ERROR))
             return
         if result.status == "rejected":
             message = str(state.get("final_message") or result.error or "The query was rejected.")
             self._write(
-                Panel(Text(message, overflow="fold"), title="Rejected", border_style="yellow")
+                Panel(Text(message, overflow="fold"), title="Rejected", border_style=BRAND_WARNING)
             )
             return
         message = str(state.get("final_message") or "Done.")
-        self._write(Panel(Text(message, overflow="fold"), title="Assistant", border_style="cyan"))
+        self._write(Panel(Text(message, overflow="fold"), title="Assistant", border_style=BRAND_ACCENT))
 
     def _show_history(self) -> None:
         if self.service is None:
@@ -1989,12 +2347,12 @@ class QuerityTUI(App[None]):
         for run in runs:
             blocks.append(f"  {run.get('status')} · {str(run.get('question') or '')[:100]}")
         self._write(
-            Panel(Text("\n".join(blocks), overflow="fold"), title="History", border_style="blue")
+            Panel(Text("\n".join(blocks), overflow="fold"), title="History", border_style=BRAND_PRIMARY)
         )
 
     def _show_config(self) -> None:
         if self.config is None:
-            self._write(Text("No configuration yet. Type /settings to set it up.", style="yellow"))
+            self._write(Text("No configuration yet. Type /settings to set it up.", style=BRAND_WARNING))
             return
         saved = []
         for entry in self.config.databases:
@@ -2021,7 +2379,7 @@ class QuerityTUI(App[None]):
         ]
         self._write(
             Panel(
-                Text("\n".join(lines), overflow="fold"), title="Configuration", border_style="blue"
+                Text("\n".join(lines), overflow="fold"), title="Configuration", border_style=BRAND_PRIMARY
             )
         )
 
@@ -2029,10 +2387,10 @@ class QuerityTUI(App[None]):
         if self.service is None or self.config is None:
             return
         if self.busy:
-            self._write(Text("Wait for the current operation to finish.", style="yellow"))
+            self._write(Text("Wait for the current operation to finish.", style=BRAND_WARNING))
             return
         if self.pending is not None:
-            self._write(Text("Resolve the pending request before re-indexing.", style="yellow"))
+            self._write(Text("Resolve the pending request before re-indexing.", style=BRAND_WARNING))
             return
         self._set_busy(True)
         self._set_status("Indexing catalog...")
@@ -2068,7 +2426,7 @@ class QuerityTUI(App[None]):
                 self.service.refresh()
             except Exception:
                 self._write(
-                    Text("Catalog refreshed, but the session could not reload it.", style="yellow")
+                    Text("Catalog refreshed, but the session could not reload it.", style=BRAND_WARNING)
                 )
             if self.config is not None:
                 url = self.service.settings.source_url
@@ -2097,7 +2455,7 @@ class QuerityTUI(App[None]):
             Panel(
                 Text("\n".join(stats_lines), overflow="fold"),
                 title="Ingestion complete",
-                border_style="green" if summary.status == "succeeded" else "yellow",
+                border_style=BRAND_SUCCESS if summary.status == "succeeded" else BRAND_WARNING,
             )
         )
         self._show_database_status()
@@ -2150,7 +2508,7 @@ class QuerityTUI(App[None]):
         if isinstance(health, dict) and health.get("error"):
             lines.append(f"Health error: {health['error']}")
         self._write(
-            Panel(Text("\n".join(lines), overflow="fold"), title="Status", border_style="blue")
+            Panel(Text("\n".join(lines), overflow="fold"), title="Status", border_style=BRAND_PRIMARY)
         )
 
     def action_quit(self) -> None:
@@ -2168,7 +2526,7 @@ def _format_timestamp(value: Any) -> str:
 
 
 def _rows_table(columns: list[str], rows: list[list[str]]) -> Table:
-    table = Table(show_header=True, header_style="bold cyan", expand=True)
+    table = Table(show_header=True, header_style=f"bold {BRAND_ACCENT}", expand=True)
     for column in columns:
         table.add_column(str(column), overflow="ellipsis", max_width=48)
     for row in rows:
@@ -2187,7 +2545,7 @@ def approval_help() -> Panel:
             overflow="fold",
         ),
         title="Approval",
-        border_style="yellow",
+        border_style=BRAND_WARNING,
     )
 
 
@@ -2209,7 +2567,7 @@ def help_text() -> Panel:
     return Panel(
         Text("\n".join(lines), overflow="fold"),
         title="Help",
-        border_style="cyan",
+        border_style=BRAND_ACCENT,
     )
 
 

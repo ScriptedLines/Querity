@@ -8,15 +8,34 @@ from querity.agent.service import AgentService
 from querity.benchmarks.evaluator import BenchmarkEvaluator, compare_result_sets
 from querity.benchmarks.reporter import BenchmarkReporter
 from querity.benchmarks.runner import load_golden_queries, run_benchmark
-from querity.cli.config import load_config
+from querity.cli.config import ConfigError, load_config
 
 
 @pytest.fixture(scope="module")
 def real_db_settings():
-    config = load_config()
-    if not config.database_url:
+    try:
+        config = load_config()
+    except ConfigError:
         pytest.skip("No real PostgreSQL database configured in ~/.config/querity/config.json")
-    return config.to_settings()
+
+    url = config.database_url
+    if not url or "user:pass@localhost" in url:
+        pytest.skip("No real PostgreSQL database configured in config or environment")
+
+    if not config.google_api_key:
+        pytest.skip("No GOOGLE_API_KEY configured for live agent integration tests")
+
+    try:
+        settings = config.to_settings()
+        service = AgentService(settings)
+        try:
+            service.check_connection()
+        finally:
+            service.close()
+    except Exception as exc:
+        pytest.skip(f"Live PostgreSQL database is not reachable: {exc}")
+
+    return settings
 
 
 @pytest.fixture(scope="module")

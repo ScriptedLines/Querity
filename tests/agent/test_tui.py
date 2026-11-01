@@ -97,7 +97,9 @@ def test_database_screen_custom_schemas() -> None:
 
 def test_render_conversation_history_renders_user_sql_and_results(tmp_path) -> None:
     from unittest.mock import MagicMock
+
     from textual.widgets import RichLog
+
     from querity.agent.chat_store import ChatStore
 
     history_db = tmp_path / "history.sqlite3"
@@ -159,6 +161,7 @@ def test_render_conversation_history_renders_user_sql_and_results(tmp_path) -> N
 
 def test_connect_database_does_not_reingest_when_already_ingested(monkeypatch) -> None:
     from unittest.mock import MagicMock
+
     from querity.cli.config import CliConfig
 
     config = CliConfig(google_api_key="google-key", nvidia_api_key="nvidia-key")
@@ -205,6 +208,7 @@ def test_connect_database_does_not_reingest_when_already_ingested(monkeypatch) -
 
 def test_action_new_chat_on_active_database_creates_new_conversation_without_modal(monkeypatch) -> None:
     from unittest.mock import MagicMock
+
     from querity.cli.config import CliConfig
 
     config = CliConfig(google_api_key="google-key", nvidia_api_key="nvidia-key")
@@ -240,6 +244,81 @@ def test_action_new_chat_on_active_database_creates_new_conversation_without_mod
             assert mock_service.new_conversation.called
             # No modal screen should have been pushed
             assert not isinstance(app.screen, DatabaseScreen)
+            app.exit()
+
+    asyncio.run(run())
+
+
+def test_hero_logo_renders_block_wordmark() -> None:
+    from rich.console import Group
+    from rich.text import Text
+
+    from querity.cli.tui import _hero_logo, _logo_lines, _welcome_panel
+
+    rows = _logo_lines("QUERITY")
+    assert len(rows) == 5
+    assert len({len(row) for row in rows}) == 1
+    assert len(rows[0]) == 55
+
+    logo = _hero_logo("QUERITY")
+    assert isinstance(logo, Text)
+    assert "█" in logo.plain
+    assert "#" not in logo.plain
+    assert len(logo.plain.splitlines()) == 5
+    assert logo.spans
+
+    welcome = _welcome_panel(show_logo=True)
+    assert isinstance(welcome, Group)
+    assert not isinstance(_welcome_panel(show_logo=False), Group)
+
+
+def test_connect_database_shows_logo_only_for_empty_conversations(monkeypatch) -> None:
+    from unittest.mock import MagicMock
+
+    from querity.cli.config import CliConfig
+
+    config = CliConfig(google_api_key="google-key", nvidia_api_key="nvidia-key")
+    url = "postgresql://user:pass@localhost:5432/testdb"
+    config.remember_database(url, source_id="testdb")
+
+    mock_service = MagicMock()
+    mock_service.settings.source_url = "postgresql+psycopg://user:pass@localhost:5432/testdb"
+    mock_service.settings.source_id = "testdb"
+    mock_service.settings.source_schemas = "public"
+    mock_service.settings.metadata_schema = "querity"
+    mock_service.metadata_store.primary_source_id.return_value = "testdb"
+    mock_service.ingestion_status.return_value = {"ingested": True, "tables": 10, "last_run": None, "error": None}
+    mock_service.conversation = {"title": "Test Chat", "conversation_id": "c1"}
+    mock_service.conversation_id = "c1"
+    mock_service.chat_store.stats.return_value = {"messages": 0, "query_runs": 0, "verified_turns": 0}
+    mock_service.chat_store.get_messages.return_value = []
+    mock_service.pending_interrupt.return_value = None
+
+    monkeypatch.setattr("querity.cli.tui.AgentService", lambda *args, **kwargs: mock_service)
+
+    async def run() -> None:
+        app = QuerityTUI(config)
+        async with app.run_test(size=(110, 55)) as pilot:
+            await pilot.pause()
+            shown: list[bool] = []
+            monkeypatch.setattr(
+                app,
+                "_write_welcome",
+                lambda *, show_logo=True: shown.append(show_logo),
+            )
+
+            assert app._connect_database(config, url, new_chat=True) is True
+            mock_service.chat_store.stats.return_value = {
+                "messages": 3,
+                "query_runs": 1,
+                "verified_turns": 1,
+            }
+            assert app._connect_database(config, url, new_chat=True) is True
+            assert shown == [True, False]
+
+            mock_service.check_connection.side_effect = RuntimeError("connection refused")
+            assert app._connect_database(config, url, new_chat=True) is False
+            assert shown == [True, False, True]
             app.exit()
 
     asyncio.run(run())
