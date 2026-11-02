@@ -46,6 +46,10 @@ class QueryBenchmarkResult(BaseModel):
     golden_rows_count: int = 0
     duration_postgres_ms: float = 0.0
     notes: str = ""
+    generated_columns: list[str] = Field(default_factory=list)
+    golden_columns: list[str] = Field(default_factory=list)
+    generated_rows_preview: list[list[Any]] = Field(default_factory=list)
+    golden_rows_preview: list[list[Any]] = Field(default_factory=list)
 
 
 class StageLatencySummary(BaseModel):

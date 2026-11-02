@@ -30,6 +30,22 @@ def mask_database_url(url: str) -> str:
     return f"***@{suffix}"
 
 
+def _format_preview_table(columns: list[str], rows: list[list[Any]]) -> list[str]:
+    if not columns or not rows:
+        return ["*(No rows returned)*"]
+    header = "| " + " | ".join(columns) + " |"
+    separator = "| " + " | ".join(["---"] * len(columns)) + " |"
+    table_lines = [header, separator]
+    for row in rows:
+        cells = [str(c).replace("|", "\\|").replace("\n", " ") for c in row]
+        if len(cells) < len(columns):
+            cells.extend([""] * (len(columns) - len(cells)))
+        elif len(cells) > len(columns):
+            cells = cells[:len(columns)]
+        table_lines.append("| " + " | ".join(cells) + " |")
+    return table_lines
+
+
 class BenchmarkReporter:
     def __init__(
         self,
@@ -322,6 +338,20 @@ class BenchmarkReporter:
                     "```",
                     "",
                 ])
+                if d.generated_columns and d.generated_rows_preview:
+                    lines.extend([
+                        f"**Generated Result Preview** (first {len(d.generated_rows_preview)} of {d.generated_rows_count} rows):",
+                        "",
+                    ])
+                    lines.extend(_format_preview_table(d.generated_columns, d.generated_rows_preview))
+                    lines.append("")
+                if d.golden_columns and d.golden_rows_preview:
+                    lines.extend([
+                        f"**Golden Result Preview** (first {len(d.golden_rows_preview)} of {d.golden_rows_count} rows):",
+                        "",
+                    ])
+                    lines.extend(_format_preview_table(d.golden_columns, d.golden_rows_preview))
+                    lines.append("")
 
         lines.extend([
             "---",

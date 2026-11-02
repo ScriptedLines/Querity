@@ -83,6 +83,14 @@ def compare_result_sets(
     return row_count_match, exact_match, row_count_diff
 
 
+def serialize_preview(rows: list[Any], max_rows: int = 5) -> list[list[Any]]:
+    preview: list[list[Any]] = []
+    for row in rows[:max_rows]:
+        canon = canonicalize_row(row)
+        preview.append([str(v) if v is not None else "" for v in canon])
+    return preview
+
+
 def normalize_table_name(name: str) -> str:
     cleaned = name.lower().strip()
     if cleaned.startswith("public."):
@@ -259,5 +267,9 @@ class BenchmarkEvaluator:
             golden_rows_count=len(gold_rows),
             duration_postgres_ms=round(duration_postgres_ms, 2),
             notes=notes,
+            generated_columns=gen_columns,
+            golden_columns=gold_columns,
+            generated_rows_preview=serialize_preview(gen_rows),
+            golden_rows_preview=serialize_preview(gold_rows),
         )
 
