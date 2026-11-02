@@ -297,17 +297,21 @@ flowchart LR
 
 ## Installation
 
-### Method 1: Automated Installer (Linux & macOS)
+### Method 1: Automated One-Line Installer
 
-The one-line bootstrap installer configures an isolated environment and links the `querity` binary to `~/.local/bin/querity`:
+The automated installer configures an isolated environment, automatically boots a lightweight runtime via `uv` or Python 3.12+ without requiring administrative/root privileges, and adds the `querity` executable directly to your path.
 
+**macOS & Linux (Terminal)**:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ScriptedLines/Querity/main/install.sh | bash
 ```
 
-If Python 3.12+ is not installed, the script automatically provisions an isolated Python runtime via `uv` without requiring root permissions.
+**Windows (PowerShell)**:
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/ScriptedLines/Querity/main/install.ps1 | iex"
+```
 
-### Method 2: Standalone Tool via `uv`
+### Method 2: Standalone Tool via `uv` (macOS, Linux, Windows)
 
 ```bash
 uv tool install git+https://github.com/ScriptedLines/Querity.git
