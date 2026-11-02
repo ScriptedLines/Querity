@@ -43,6 +43,9 @@ def run_benchmark(
     min_guard_pass_rate: float | None = None,
     max_mean_latency_ms: float | None = None,
     min_exact_match_rate: float | None = None,
+    min_entity_recall: float | None = None,
+    min_soft_f1: float | None = None,
+    min_value_parity: float | None = None,
     fail_on_threshold: bool = False,
     verbose: bool = True,
 ) -> BenchmarkRunSummary:
@@ -87,9 +90,12 @@ def run_benchmark(
             status_str = "[green]SUCCESS[/green]" if res.accuracy.execution_success else "[red]FAIL[/red]"
             exact_str = "[green]MATCH[/green]" if res.accuracy.exact_tuple_match else "[yellow]DIFF[/yellow]"
             recall_str = f"{int(res.accuracy.table_recall * 100)}%"
+            ent_recall_str = f"{int(res.accuracy.entity_recall * 100)}%"
+            parity_str = f"{int(res.accuracy.value_parity * 100)}%"
             console.print(
-                f"   Status: {status_str} | Exact Match: {exact_str} | "
-                f"Recall: {recall_str} | E2E: [cyan]{res.latencies.total_turn_ms:,.0f}ms[/cyan] "
+                f"   Status: {status_str} | Exact: {exact_str} | "
+                f"Key Recall: {ent_recall_str} | Parity: {parity_str} | "
+                f"Table Recall: {recall_str} | E2E: [cyan]{res.latencies.total_turn_ms:,.0f}ms[/cyan] "
                 f"(Gen: {res.latencies.generate_ms:,.0f}ms, Exec: {res.latencies.execute_ms:,.0f}ms)"
             )
             if not res.accuracy.execution_success and res.execution_error:
@@ -119,6 +125,9 @@ def run_benchmark(
         min_guard_pass_rate=min_guard_pass_rate,
         max_mean_latency_ms=max_mean_latency_ms,
         min_exact_match_rate=min_exact_match_rate,
+        min_entity_recall=min_entity_recall,
+        min_soft_f1=min_soft_f1,
+        min_value_parity=min_value_parity,
     )
     if violations:
         console.print("\n[bold red]Benchmark Threshold Violations:[/bold red]")
@@ -136,6 +145,9 @@ def run_benchmark(
             min_guard_pass_rate,
             max_mean_latency_ms,
             min_exact_match_rate,
+            min_entity_recall,
+            min_soft_f1,
+            min_value_parity,
         ]
     ):
         console.print("\n[bold green]All benchmark threshold criteria met successfully![/bold green]")
@@ -167,6 +179,21 @@ def _print_console_summary(
         "Row Count Match Rate",
         f"{summary.row_count_match_rate}% ({summary.row_count_matches}/{summary.total_queries})",
         ">= 80%",
+    )
+    table.add_row(
+        "Entity Key Recall",
+        f"{summary.avg_entity_recall}%",
+        ">= 80%",
+    )
+    table.add_row(
+        "Soft F1 Match Rate",
+        f"{summary.avg_soft_f1}%",
+        ">= 70%",
+    )
+    table.add_row(
+        "Value Parity Rate",
+        f"{summary.avg_value_parity}%",
+        ">= 70%",
     )
     table.add_row(
         "Average Table Recall",

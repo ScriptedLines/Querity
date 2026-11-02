@@ -105,6 +105,9 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--min-guard-pass-rate", type=float, default=None, help="minimum SQL guard pass rate % (e.g. 95.0)")
     benchmark.add_argument("--max-mean-latency-ms", type=float, default=None, help="maximum allowed mean latency in ms (e.g. 40000.0)")
     benchmark.add_argument("--min-exact-match-rate", type=float, default=None, help="minimum exact match rate % (e.g. 70.0)")
+    benchmark.add_argument("--min-entity-recall", type=float, default=None, help="minimum entity key recall % (e.g. 80.0)")
+    benchmark.add_argument("--min-soft-f1", type=float, default=None, help="minimum soft F1 match rate % (e.g. 70.0)")
+    benchmark.add_argument("--min-value-parity", type=float, default=None, help="minimum value parity rate % (e.g. 70.0)")
     benchmark.add_argument("--fail-on-threshold", action="store_true", help="exit with error code 1 if any threshold is violated")
     benchmark.set_defaults(handler=_cmd_benchmark)
     return parser
@@ -610,6 +613,9 @@ def _cmd_benchmark(args: argparse.Namespace) -> int:
             min_guard_pass_rate=args.min_guard_pass_rate,
             max_mean_latency_ms=args.max_mean_latency_ms,
             min_exact_match_rate=args.min_exact_match_rate,
+            min_entity_recall=args.min_entity_recall,
+            min_soft_f1=args.min_soft_f1,
+            min_value_parity=args.min_value_parity,
             fail_on_threshold=args.fail_on_threshold,
             verbose=True,
         )

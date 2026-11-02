@@ -66,6 +66,36 @@ def test_result_set_canonical_comparison():
     assert diff == 1
 
 
+def test_entity_recall_and_value_parity_metrics():
+    # Scenario: Golden has LIMIT 2 top suppliers; Generated has all 3 suppliers
+    gen_cols = ["supplier_id", "company_name", "total_inventory_valuation", "gross_sales", "net_revenue"]
+    gold_cols = ["supplier_id", "company_name", "country", "inventory_valuation_usd", "gross_sales_usd", "net_sales_usd"]
+
+    gold_rows = [
+        (15, "Supplier P15", "Taiwan", 10774719.4, 244096.0, 239996.0),
+        (5, "Supplier F5", "Canada", 9432020.0, 243976.0, 239776.0),
+    ]
+    gen_rows = [
+        (26, "Supplier A26", 9851435.0, 233476.0, 214482.34),
+        (15, "Supplier P15", 10774719.4, 244096.0, 239996.0),
+        (5, "Supplier F5", 9432020.0, 243976.0, 239776.0),
+    ]
+
+    res = compare_result_sets(gen_rows, gold_rows, gen_columns=gen_cols, gold_columns=gold_cols)
+
+    # 1. Backwards compatible tuple unpacking
+    rc_match, exact, diff = res
+    assert rc_match is False
+    assert exact is False
+    assert diff == 1
+
+    # 2. Rich entity recall and value parity metrics
+    assert res.entity_recall == 1.0, f"Expected 100% recall, got {res.entity_recall}"
+    assert round(res.entity_precision, 2) == 0.67
+    assert res.soft_f1 > 0.75
+    assert res.value_parity == 1.0, f"Expected 100% value parity, got {res.value_parity}"
+
+
 def test_real_database_connectivity_and_catalog(real_db_settings):
     service = AgentService(real_db_settings)
     try:

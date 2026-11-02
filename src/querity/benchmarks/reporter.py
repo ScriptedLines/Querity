@@ -121,6 +121,9 @@ class BenchmarkReporter:
 
         table_recalls = [r.accuracy.table_recall for r in results]
         table_precisions = [r.accuracy.table_precision for r in results]
+        entity_recalls = [r.accuracy.entity_recall for r in results]
+        soft_f1s = [r.accuracy.soft_f1 for r in results]
+        value_parities = [r.accuracy.value_parity for r in results]
         total_latencies = [r.latencies.total_turn_ms for r in results]
 
         # Stage latencies
@@ -158,6 +161,9 @@ class BenchmarkReporter:
             avg_table_recall=round((sum(table_recalls) / total) * 100, 2),
             avg_table_precision=round((sum(table_precisions) / total) * 100, 2),
             guard_pass_rate=round((guard_passed / total) * 100, 2),
+            avg_entity_recall=round((sum(entity_recalls) / total) * 100, 2),
+            avg_soft_f1=round((sum(soft_f1s) / total) * 100, 2),
+            avg_value_parity=round((sum(value_parities) / total) * 100, 2),
             mean_e2e_latency_ms=e2e_summary.mean_ms,
             p50_e2e_latency_ms=e2e_summary.median_ms,
             p95_e2e_latency_ms=e2e_summary.p95_ms,
@@ -220,6 +226,9 @@ class BenchmarkReporter:
                 "total_queries": summary.total_queries,
                 "execution_success_rate": summary.execution_success_rate,
                 "exact_match_rate": summary.exact_result_match_rate,
+                "entity_recall": summary.avg_entity_recall,
+                "soft_f1": summary.avg_soft_f1,
+                "value_parity": summary.avg_value_parity,
                 "table_recall": summary.avg_table_recall,
                 "mean_e2e_ms": summary.mean_e2e_latency_ms,
                 "run_directory": str(self.run_dir),
@@ -253,6 +262,9 @@ class BenchmarkReporter:
             f"| **Execution Success Rate** | **{summary.execution_success_rate}%** ({summary.successful_executions}/{summary.total_queries}) | >= 90.0% | {'PASS' if summary.execution_success_rate >= 90 else 'WARN'} |",
             f"| **Exact Tuple Match Rate** | **{summary.exact_result_match_rate}%** ({summary.exact_result_matches}/{summary.total_queries}) | >= 70.0% | {'PASS' if summary.exact_result_match_rate >= 70 else 'WARN'} |",
             f"| **Row Count Match Rate** | **{summary.row_count_match_rate}%** ({summary.row_count_matches}/{summary.total_queries}) | >= 80.0% | {'PASS' if summary.row_count_match_rate >= 80 else 'WARN'} |",
+            f"| **Entity Key Recall** | **{summary.avg_entity_recall}%** | >= 80.0% | {'PASS' if summary.avg_entity_recall >= 80 else 'WARN'} |",
+            f"| **Soft F1 Match Rate** | **{summary.avg_soft_f1}%** | >= 70.0% | {'PASS' if summary.avg_soft_f1 >= 70 else 'WARN'} |",
+            f"| **Value Parity Rate** | **{summary.avg_value_parity}%** | >= 70.0% | {'PASS' if summary.avg_value_parity >= 70 else 'WARN'} |",
             f"| **Average Table Recall** | **{summary.avg_table_recall}%** | >= 85.0% | {'PASS' if summary.avg_table_recall >= 85 else 'WARN'} |",
             f"| **Average Table Precision** | **{summary.avg_table_precision}%** | >= 50.0% | {'PASS' if summary.avg_table_precision >= 50 else 'WARN'} |",
             f"| **SQL Guard Pass Rate** | **{summary.guard_pass_rate}%** | >= 95.0% | {'PASS' if summary.guard_pass_rate >= 95 else 'WARN'} |",
@@ -283,8 +295,8 @@ class BenchmarkReporter:
             "",
             "## Per-Query Results Detail",
             "",
-            "| # | Question | Status | Exact Match | Rows (Gen/Gold) | Table Recall | Analyze | Retrieve | Generate | Guard | Exec | Total Turn |",
-            "| :- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+            "| # | Question | Status | Exact Match | Rows (Gen/Gold) | Entity Recall | Value Parity | Table Recall | Analyze | Retrieve | Generate | Guard | Exec | Total Turn |",
+            "| :- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
         ])
 
         for r in results:
@@ -293,8 +305,10 @@ class BenchmarkReporter:
             exact = "YES" if r.accuracy.exact_tuple_match else "NO"
             rows = f"{r.generated_rows_count}/{r.golden_rows_count}"
             recall = f"{int(r.accuracy.table_recall * 100)}%"
+            ent_recall = f"{int(r.accuracy.entity_recall * 100)}%"
+            val_parity = f"{int(r.accuracy.value_parity * 100)}%"
             lines.append(
-                f"| {r.index} | {short_q} | {status} | {exact} | {rows} | {recall} | "
+                f"| {r.index} | {short_q} | {status} | {exact} | {rows} | {ent_recall} | {val_parity} | {recall} | "
                 f"{r.latencies.analyze_ms:,.0f}ms | {r.latencies.retrieve_ms:,.0f}ms | "
                 f"{r.latencies.generate_ms:,.0f}ms | {r.latencies.guard_ms:,.0f}ms | "
                 f"{r.latencies.execute_ms:,.0f}ms | {r.latencies.total_turn_ms:,.0f}ms |"
@@ -317,6 +331,7 @@ class BenchmarkReporter:
                     f"- **Execution Status**: {'Success' if d.accuracy.execution_success else 'Error'}",
                     f"- **Exact Match**: {'Yes' if d.accuracy.exact_tuple_match else 'No'}",
                     f"- **Row Counts**: Generated={d.generated_rows_count}, Golden={d.golden_rows_count} (Diff: {d.accuracy.row_count_diff})",
+                    f"- **Entity Recall**: {int(d.accuracy.entity_recall * 100)}% | **Soft F1**: {int(d.accuracy.soft_f1 * 100)}% | **Value Parity**: {int(d.accuracy.value_parity * 100)}%",
                     f"- **Table Recall**: {int(d.accuracy.table_recall * 100)}% (Expected: {', '.join(d.tables_expected)}, Retrieved: {', '.join(d.tables_retrieved)})",
                 ])
                 if d.execution_error:

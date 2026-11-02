@@ -28,6 +28,10 @@ class AccuracyMetrics(BaseModel):
     exact_tuple_match: bool = False
     column_overlap: float = 0.0
     row_count_diff: int = 0
+    entity_recall: float = 0.0
+    entity_precision: float = 0.0
+    soft_f1: float = 0.0
+    value_parity: float = 0.0
 
 
 class QueryBenchmarkResult(BaseModel):
@@ -100,6 +104,9 @@ class BenchmarkRunSummary(BaseModel):
     avg_table_recall: float = 0.0
     avg_table_precision: float = 0.0
     guard_pass_rate: float = 0.0
+    avg_entity_recall: float = 0.0
+    avg_soft_f1: float = 0.0
+    avg_value_parity: float = 0.0
     mean_e2e_latency_ms: float = 0.0
     p50_e2e_latency_ms: float = 0.0
     p95_e2e_latency_ms: float = 0.0
@@ -114,6 +121,9 @@ class BenchmarkRunSummary(BaseModel):
         min_guard_pass_rate: float | None = None,
         max_mean_latency_ms: float | None = None,
         min_exact_match_rate: float | None = None,
+        min_entity_recall: float | None = None,
+        min_soft_f1: float | None = None,
+        min_value_parity: float | None = None,
     ) -> list[str]:
         violations: list[str] = []
         if min_success_rate is not None and self.execution_success_rate < min_success_rate:
@@ -135,6 +145,18 @@ class BenchmarkRunSummary(BaseModel):
         if min_exact_match_rate is not None and self.exact_result_match_rate < min_exact_match_rate:
             violations.append(
                 f"Exact Tuple Match Rate {self.exact_result_match_rate}% is below threshold {min_exact_match_rate}%"
+            )
+        if min_entity_recall is not None and self.avg_entity_recall < min_entity_recall:
+            violations.append(
+                f"Entity Key Recall {self.avg_entity_recall}% is below threshold {min_entity_recall}%"
+            )
+        if min_soft_f1 is not None and self.avg_soft_f1 < min_soft_f1:
+            violations.append(
+                f"Soft F1 Match Rate {self.avg_soft_f1}% is below threshold {min_soft_f1}%"
+            )
+        if min_value_parity is not None and self.avg_value_parity < min_value_parity:
+            violations.append(
+                f"Value Parity Rate {self.avg_value_parity}% is below threshold {min_value_parity}%"
             )
         return violations
 

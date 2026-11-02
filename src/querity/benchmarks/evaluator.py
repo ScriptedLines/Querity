@@ -50,20 +50,167 @@ def canonicalize_row(row: Any) -> tuple[Any, ...]:
     return tuple(canonicalize_value(v) for v in items)
 
 
+class ComparisonResult(tuple):
+    row_count_match: bool
+    exact_tuple_match: bool
+    row_count_diff: int
+    entity_recall: float
+    entity_precision: float
+    soft_f1: float
+    value_parity: float
+
+    def __new__(
+        cls,
+        row_count_match: bool,
+        exact_tuple_match: bool,
+        row_count_diff: int,
+        entity_recall: float = 0.0,
+        entity_precision: float = 0.0,
+        soft_f1: float = 0.0,
+        value_parity: float = 0.0,
+    ) -> ComparisonResult:
+        obj = super().__new__(cls, (row_count_match, exact_tuple_match, row_count_diff))
+        obj.row_count_match = bool(row_count_match)
+        obj.exact_tuple_match = bool(exact_tuple_match)
+        obj.row_count_diff = int(row_count_diff)
+        obj.entity_recall = round(float(entity_recall), 4)
+        obj.entity_precision = round(float(entity_precision), 4)
+        obj.soft_f1 = round(float(soft_f1), 4)
+        obj.value_parity = round(float(value_parity), 4)
+        return obj
+
+
+def is_numeric_value(val: Any) -> bool:
+    if val is None or isinstance(val, bool):
+        return False
+    return isinstance(val, (int, float, decimal.Decimal))
+
+
+def values_close(v1: Any, v2: Any, rel_tol: float = 0.02, abs_tol: float = 1.0) -> bool:
+    if v1 is None and v2 is None:
+        return True
+    if v1 is None or v2 is None:
+        return False
+    if not is_numeric_value(v1) or not is_numeric_value(v2):
+        return str(v1).strip().lower() == str(v2).strip().lower()
+    try:
+        f1, f2 = float(v1), float(v2)
+    except (ValueError, TypeError):
+        return str(v1).strip().lower() == str(v2).strip().lower()
+    if math.isnan(f1) and math.isnan(f2):
+        return True
+    return abs(f1 - f2) <= max(rel_tol * max(abs(f1), abs(f2)), abs_tol)
+
+
+def normalize_metric_name(col: str) -> str:
+    s = col.lower().strip()
+    for suffix in ["_usd", "_pct", "_days", "_count", "_total"]:
+        if s.endswith(suffix):
+            s = s[: -len(suffix)]
+    if s.startswith("total_"):
+        s = s[len("total_") :]
+    s = s.replace("sales", "revenue")
+    return s
+
+
+def row_to_dict(row: Any, columns: list[str]) -> dict[str, Any]:
+    if hasattr(row, "_mapping"):
+        return {str(k).lower(): canonicalize_value(v) for k, v in row._mapping.items()}
+    if hasattr(row, "_asdict"):
+        return {str(k).lower(): canonicalize_value(v) for k, v in row._asdict().items()}
+    if isinstance(row, dict):
+        return {str(k).lower(): canonicalize_value(v) for k, v in row.items()}
+    if isinstance(row, (tuple, list)):
+        return {str(col).lower(): canonicalize_value(val) for col, val in zip(columns, row)}
+    return {}
+
+
+def find_entity_key_columns(gen_cols: list[str], gold_cols: list[str]) -> list[str]:
+    gen_lower = [c.lower() for c in gen_cols]
+    gold_lower = [c.lower() for c in gold_cols]
+    shared = set(gen_lower).intersection(set(gold_lower))
+
+    # Priority 1: Primary ID columns
+    id_cols = [c for c in gen_lower if c in shared and (c.endswith("_id") or c == "id")]
+    if id_cols:
+        return id_cols
+
+    # Priority 2: Codes / natural identifiers (sku, promo_code, etc.)
+    code_cols = [
+        c
+        for c in gen_lower
+        if c in shared and any(k in c for k in ["sku", "code", "number", "email"])
+    ]
+    if code_cols:
+        return code_cols
+
+    # Priority 3: Categorical / dimension names (carrier_name, tier, category, etc.)
+    dim_cols = [
+        c
+        for c in gen_lower
+        if c in shared
+        and any(
+            k in c
+            for k in [
+                "name",
+                "tier",
+                "quartile",
+                "category",
+                "status",
+                "carrier",
+                "gateway",
+                "method",
+                "priority",
+                "region",
+            ]
+        )
+    ]
+    if dim_cols:
+        return dim_cols
+
+    # Priority 4: Any column in shared
+    text_cols = [c for c in gen_lower if c in shared]
+    if text_cols:
+        return [text_cols[0]]
+
+    # Priority 5: Fallback to first column if both non-empty
+    if gen_cols and gold_cols:
+        return [gen_lower[0]]
+    return []
+
+
 def compare_result_sets(
     generated_rows: list[Any],
     golden_rows: list[Any],
-) -> tuple[bool, bool, int]:
+    gen_columns: list[str] | None = None,
+    gold_columns: list[str] | None = None,
+) -> ComparisonResult:
     gen_count = len(generated_rows)
     gold_count = len(golden_rows)
     row_count_match = gen_count == gold_count
     row_count_diff = gen_count - gold_count
 
     if not generated_rows and not golden_rows:
-        return True, True, 0
+        return ComparisonResult(
+            row_count_match=True,
+            exact_tuple_match=True,
+            row_count_diff=0,
+            entity_recall=1.0,
+            entity_precision=1.0,
+            soft_f1=1.0,
+            value_parity=1.0,
+        )
 
     if gen_count == 0 or gold_count == 0:
-        return row_count_match, False, row_count_diff
+        return ComparisonResult(
+            row_count_match=row_count_match,
+            exact_tuple_match=False,
+            row_count_diff=row_count_diff,
+            entity_recall=0.0,
+            entity_precision=0.0,
+            soft_f1=0.0,
+            value_parity=0.0,
+        )
 
     gen_canon = [canonicalize_row(r) for r in generated_rows]
     gold_canon = [canonicalize_row(r) for r in golden_rows]
@@ -80,7 +227,93 @@ def compare_result_sets(
         if collections.Counter(gen_sets) == collections.Counter(gold_sets):
             exact_match = True
 
-    return row_count_match, exact_match, row_count_diff
+    if exact_match:
+        return ComparisonResult(
+            row_count_match=row_count_match,
+            exact_tuple_match=True,
+            row_count_diff=row_count_diff,
+            entity_recall=1.0,
+            entity_precision=1.0,
+            soft_f1=1.0,
+            value_parity=1.0,
+        )
+
+    # Infer column names if not provided
+    g_cols = gen_columns or [f"col_{i}" for i in range(len(gen_canon[0]))]
+    d_cols = gold_columns or [f"col_{i}" for i in range(len(gold_canon[0]))]
+
+    key_cols = find_entity_key_columns(g_cols, d_cols)
+
+    gold_by_key: dict[Any, dict[str, Any]] = {}
+    gold_keys: set[Any] = set()
+    for r in golden_rows:
+        d = row_to_dict(r, d_cols)
+        k = tuple(d.get(col) for col in key_cols) if len(key_cols) > 1 else (d.get(key_cols[0]) if key_cols else canonicalize_row(r))
+        gold_by_key[k] = d
+        gold_keys.add(k)
+
+    gen_by_key: dict[Any, dict[str, Any]] = {}
+    gen_keys: set[Any] = set()
+    for r in generated_rows:
+        d = row_to_dict(r, g_cols)
+        k = tuple(d.get(col) for col in key_cols) if len(key_cols) > 1 else (d.get(key_cols[0]) if key_cols else canonicalize_row(r))
+        gen_by_key[k] = d
+        gen_keys.add(k)
+
+    matched_keys = gold_keys.intersection(gen_keys)
+    entity_recall = (len(matched_keys) / len(gold_keys)) if gold_keys else 1.0
+    entity_precision = (len(matched_keys) / len(gen_keys)) if gen_keys else 0.0
+    soft_f1 = (
+        (2 * entity_recall * entity_precision) / (entity_recall + entity_precision)
+        if (entity_recall + entity_precision) > 0
+        else 0.0
+    )
+
+    # Comparable metric columns
+    pairs: list[tuple[str, str]] = []
+    g_lower = [c.lower() for c in g_cols]
+    d_lower = [c.lower() for c in d_cols]
+    d_norm_map = {normalize_metric_name(c): c for c in d_lower if c not in key_cols}
+
+    for gc in g_lower:
+        if gc in key_cols:
+            continue
+        if gc in d_lower and gc not in key_cols:
+            pairs.append((gc, gc))
+        else:
+            gn = normalize_metric_name(gc)
+            if gn in d_norm_map:
+                pairs.append((gc, d_norm_map[gn]))
+
+    matching_values = 0
+    total_comparable = 0
+    for k in matched_keys:
+        g_row = gen_by_key.get(k, {})
+        d_row = gold_by_key.get(k, {})
+        for g_c, d_c in pairs:
+            v_gen = g_row.get(g_c)
+            v_gold = d_row.get(d_c)
+            if is_numeric_value(v_gen) and is_numeric_value(v_gold):
+                total_comparable += 1
+                if values_close(v_gen, v_gold):
+                    matching_values += 1
+
+    if total_comparable > 0:
+        value_parity = matching_values / total_comparable
+    elif matched_keys:
+        value_parity = 1.0 if entity_recall >= 0.8 else soft_f1
+    else:
+        value_parity = 0.0
+
+    return ComparisonResult(
+        row_count_match=row_count_match,
+        exact_tuple_match=exact_match,
+        row_count_diff=row_count_diff,
+        entity_recall=entity_recall,
+        entity_precision=entity_precision,
+        soft_f1=soft_f1,
+        value_parity=value_parity,
+    )
 
 
 def serialize_preview(rows: list[Any], max_rows: int = 5) -> list[list[Any]]:
@@ -216,7 +449,15 @@ class BenchmarkEvaluator:
                 exec_error = f"Candidate execution failed: {exc}"
 
         # Evaluate comparison metrics
-        row_count_match, exact_tuple_match, row_diff = compare_result_sets(gen_rows, gold_rows)
+        comparison = compare_result_sets(
+            gen_rows,
+            gold_rows,
+            gen_columns=gen_columns,
+            gold_columns=gold_columns,
+        )
+        row_count_match = comparison.row_count_match
+        exact_tuple_match = comparison.exact_tuple_match
+        row_diff = comparison.row_count_diff
         execution_success = bool(candidate_sql and not exec_error)
 
         # Column overlap
@@ -249,6 +490,10 @@ class BenchmarkEvaluator:
             exact_tuple_match=exact_tuple_match,
             column_overlap=round(col_overlap, 4),
             row_count_diff=row_diff,
+            entity_recall=comparison.entity_recall,
+            entity_precision=comparison.entity_precision,
+            soft_f1=comparison.soft_f1,
+            value_parity=comparison.value_parity,
         )
 
         return QueryBenchmarkResult(
