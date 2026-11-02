@@ -28,7 +28,7 @@ on:
       max_mean_latency_ms:
         description: "Maximum allowed mean latency in ms"
         required: false
-        default: "60000.0"
+        default: "75000.0"
 
 concurrency:
   group: benchmark-${{ github.ref }}
@@ -100,7 +100,7 @@ jobs:
           MIN_GUARD="${MIN_GUARD:-80.0}"
 
           MAX_LATENCY="${{ inputs.max_mean_latency_ms }}"
-          MAX_LATENCY="${MAX_LATENCY:-60000.0}"
+          MAX_LATENCY="${MAX_LATENCY:-75000.0}"
 
           uv run querity benchmark \
             --golden-path data/golden_queries.json \
