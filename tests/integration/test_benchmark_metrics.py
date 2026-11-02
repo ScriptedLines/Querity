@@ -96,6 +96,29 @@ def test_entity_recall_and_value_parity_metrics():
     assert res.value_parity == 1.0, f"Expected 100% value parity, got {res.value_parity}"
 
 
+def test_string_serialized_rows_parity_with_db_types():
+    # Scenario: Agent execution.rows contains string-serialized values ('15', '10774719.40')
+    # Golden DB rows contain native DB types (15, 10774719.4)
+    gen_cols = ["supplier_id", "company_name", "active_inventory_valuation", "gross_sales", "net_revenue_after_refunds"]
+    gold_cols = ["supplier_id", "company_name", "country", "inventory_valuation_usd", "gross_sales_usd", "net_sales_usd"]
+
+    gen_rows = [
+        ["15", "Supplier P15 Global Logistics", "10774719.40", "244096.00", "239996.00"],
+        ["5", "Supplier F5 Global Logistics", "9432020.00", "243976.00", "239776.00"],
+    ]
+    gold_rows = [
+        (15, "Supplier P15 Global Logistics", "Taiwan", 10774719.4, 244096.0, 239996.0),
+        (5, "Supplier F5 Global Logistics", "Canada", 9432020.0, 243976.0, 239776.0),
+    ]
+
+    res = compare_result_sets(gen_rows, gold_rows, gen_columns=gen_cols, gold_columns=gold_cols)
+    assert res.row_count_match is True
+    assert res.entity_recall == 1.0
+    assert res.entity_precision == 1.0
+    assert res.soft_f1 == 1.0
+    assert res.value_parity == 1.0
+
+
 def test_real_database_connectivity_and_catalog(real_db_settings):
     service = AgentService(real_db_settings)
     try:

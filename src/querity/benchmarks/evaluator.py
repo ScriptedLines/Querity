@@ -19,19 +19,30 @@ logger = get_logger(__name__)
 
 
 def canonicalize_value(val: Any) -> Any:
-    if val is None:
-        return None
-    if isinstance(val, decimal.Decimal):
-        return round(float(val), 2)
-    if isinstance(val, float):
-        if math.isnan(val) or math.isinf(val):
-            return None
-        return round(val, 2)
-    if isinstance(val, datetime.datetime | datetime.date):
+    if val is None or isinstance(val, bool):
+        return val
+    if isinstance(val, int):
+        return val
+    if isinstance(val, (float, decimal.Decimal)):
+        f = float(val)
+        return None if (math.isnan(f) or math.isinf(f)) else round(f, 2)
+    if isinstance(val, (datetime.datetime, datetime.date)):
         return val.isoformat()
     if isinstance(val, str):
-        return val.strip()
-    if isinstance(val, bytes | bytearray | memoryview):
+        s = val.strip()
+        if s.isdigit() or (s.startswith("-") and s[1:].isdigit()):
+            try:
+                return int(s)
+            except ValueError:
+                pass
+        try:
+            f = float(s)
+            if not (math.isnan(f) or math.isinf(f)):
+                return round(f, 2)
+        except ValueError:
+            pass
+        return s
+    if isinstance(val, (bytes, bytearray, memoryview)):
         return bytes(val)
     return val
 
@@ -83,7 +94,15 @@ class ComparisonResult(tuple):
 def is_numeric_value(val: Any) -> bool:
     if val is None or isinstance(val, bool):
         return False
-    return isinstance(val, (int, float, decimal.Decimal))
+    if isinstance(val, (int, float, decimal.Decimal)):
+        return True
+    if isinstance(val, str):
+        try:
+            float(val.strip())
+            return True
+        except ValueError:
+            return False
+    return False
 
 
 def values_close(v1: Any, v2: Any, rel_tol: float = 0.02, abs_tol: float = 1.0) -> bool:
@@ -104,11 +123,22 @@ def values_close(v1: Any, v2: Any, rel_tol: float = 0.02, abs_tol: float = 1.0) 
 
 def normalize_metric_name(col: str) -> str:
     s = col.lower().strip()
-    for suffix in ["_usd", "_pct", "_days", "_count", "_total"]:
+    for suffix in [
+        "_usd",
+        "_pct",
+        "_percentage",
+        "_days",
+        "_count",
+        "_total",
+        "_after_refunds",
+        "_amounts",
+        "_amount",
+    ]:
         if s.endswith(suffix):
             s = s[: -len(suffix)]
-    if s.startswith("total_"):
-        s = s[len("total_") :]
+    for prefix in ["total_", "active_"]:
+        if s.startswith(prefix):
+            s = s[len(prefix) :]
     s = s.replace("sales", "revenue")
     return s
 
