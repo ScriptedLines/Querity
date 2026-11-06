@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Any
 
 from rich.console import Console
@@ -100,14 +100,14 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--limit", "-n", type=int, default=None, help="limit number of queries to evaluate")
     benchmark.add_argument("--golden-path", "-g", type=str, default="data/golden_queries.json", help="path to golden queries JSON")
     benchmark.add_argument("--output-dir", "-o", type=str, default="benchmarks/runs", help="directory to save run artifacts")
-    benchmark.add_argument("--min-success-rate", type=float, default=None, help="minimum execution success rate % (e.g. 90.0)")
-    benchmark.add_argument("--min-table-recall", type=float, default=None, help="minimum average table recall % (e.g. 80.0)")
-    benchmark.add_argument("--min-guard-pass-rate", type=float, default=None, help="minimum SQL guard pass rate % (e.g. 95.0)")
+    benchmark.add_argument("--min-success-rate", type=float, default=None, help="minimum execution success rate percent (e.g. 90.0)")
+    benchmark.add_argument("--min-table-recall", type=float, default=None, help="minimum average table recall percent (e.g. 80.0)")
+    benchmark.add_argument("--min-guard-pass-rate", type=float, default=None, help="minimum SQL guard pass rate percent (e.g. 95.0)")
     benchmark.add_argument("--max-mean-latency-ms", type=float, default=None, help="maximum allowed mean latency in ms (e.g. 40000.0)")
-    benchmark.add_argument("--min-exact-match-rate", type=float, default=None, help="minimum exact match rate % (e.g. 70.0)")
-    benchmark.add_argument("--min-entity-recall", type=float, default=None, help="minimum entity key recall % (e.g. 80.0)")
-    benchmark.add_argument("--min-soft-f1", type=float, default=None, help="minimum soft F1 match rate % (e.g. 70.0)")
-    benchmark.add_argument("--min-value-parity", type=float, default=None, help="minimum value parity rate % (e.g. 70.0)")
+    benchmark.add_argument("--min-exact-match-rate", type=float, default=None, help="minimum exact match rate percent (e.g. 70.0)")
+    benchmark.add_argument("--min-entity-recall", type=float, default=None, help="minimum entity key recall percent (e.g. 80.0)")
+    benchmark.add_argument("--min-soft-f1", type=float, default=None, help="minimum soft F1 match rate percent (e.g. 70.0)")
+    benchmark.add_argument("--min-value-parity", type=float, default=None, help="minimum value parity rate percent (e.g. 70.0)")
     benchmark.add_argument("--fail-on-threshold", action="store_true", help="exit with error code 1 if any threshold is violated")
     benchmark.set_defaults(handler=_cmd_benchmark)
     return parser
