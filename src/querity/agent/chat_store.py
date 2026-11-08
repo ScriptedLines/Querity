@@ -104,7 +104,6 @@ class ChatStore:
                 CREATE TABLE IF NOT EXISTS query_runs (
                     run_id TEXT PRIMARY KEY,
                     conversation_id TEXT NOT NULL,
-                    request_id TEXT NOT NULL UNIQUE,
                     question TEXT NOT NULL,
                     plan TEXT,
                     sql TEXT,
@@ -158,7 +157,6 @@ class ChatStore:
                     connection.execute(
                         f"ALTER TABLE conversations ADD COLUMN {column} {definition}"
                     )
-            self._migrate_conversations(connection)
             try:
                 connection.execute(
                     """
@@ -182,44 +180,6 @@ class ChatStore:
                     )
                     """
                 )
-
-    def _migrate_conversations(self, connection: sqlite3.Connection) -> None:
-        row = connection.execute(
-            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'conversations'"
-        ).fetchone()
-        if row is None or "UNIQUE" not in str(row["sql"]).upper():
-            return
-        connection.commit()
-        connection.execute("PRAGMA foreign_keys = OFF")
-        try:
-            connection.executescript(
-                """
-                CREATE TABLE conversations_new (
-                    conversation_id TEXT PRIMARY KEY,
-                    db_fingerprint TEXT NOT NULL,
-                    source_id TEXT NOT NULL,
-                    database_url TEXT NOT NULL DEFAULT '',
-                    title TEXT NOT NULL DEFAULT 'Data chat',
-                    summary TEXT,
-                    pending_thread_id TEXT,
-                    pending_kind TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-                INSERT INTO conversations_new (
-                    conversation_id, db_fingerprint, source_id, database_url, title,
-                    summary, pending_thread_id, pending_kind, created_at, updated_at
-                )
-                SELECT
-                    conversation_id, db_fingerprint, source_id, database_url, title,
-                    summary, pending_thread_id, pending_kind, created_at, updated_at
-                FROM conversations;
-                DROP TABLE conversations;
-                ALTER TABLE conversations_new RENAME TO conversations;
-                """
-            )
-        finally:
-            connection.execute("PRAGMA foreign_keys = ON")
 
     def get_or_create_conversation(
         self,
@@ -525,15 +485,14 @@ class ChatStore:
         *,
         run_id: str,
         conversation_id: str,
-        request_id: str,
         question: str,
     ) -> str:
         with self._lock, self._connect() as connection:
             connection.execute(
                 "INSERT OR IGNORE INTO query_runs "
-                "(run_id, conversation_id, request_id, question, status, created_at) "
-                "VALUES (?, ?, ?, ?, 'running', ?)",
-                (run_id, conversation_id, request_id, question, _now()),
+                "(run_id, conversation_id, question, status, created_at) "
+                "VALUES (?, ?, ?, 'running', ?)",
+                (run_id, conversation_id, question, _now()),
             )
         return run_id
 

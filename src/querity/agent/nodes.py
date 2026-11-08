@@ -94,7 +94,6 @@ class AgentNodes:
         self.chat_store.create_query_run(
             run_id=run_id,
             conversation_id=conversation_id,
-            request_id=state["request_id"],
             question=question,
         )
         self.chat_store.add_message(

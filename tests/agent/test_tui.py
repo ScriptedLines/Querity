@@ -111,7 +111,6 @@ def test_render_conversation_history_renders_user_sql_and_results(tmp_path) -> N
     chat_store.create_query_run(
         run_id=run_id,
         conversation_id=conv_id,
-        request_id="req-1",
         question="Show all products",
     )
     chat_store.update_query_run(

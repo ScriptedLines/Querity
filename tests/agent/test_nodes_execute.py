@@ -105,7 +105,6 @@ def test_execute_uses_result_column_names_and_masks_catalog_sensitive_columns(
     nodes.chat_store.create_query_run(
         run_id="run-1",
         conversation_id="conversation-1",
-        request_id="request-1",
         question="Show users",
     )
 

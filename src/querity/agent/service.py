@@ -168,14 +168,12 @@ class AgentService:
             title = " ".join(question.split())[:80]
             self.chat_store.set_conversation_title(self.conversation_id, title)
             self.conversation["title"] = title
-        request_id = uuid.uuid4().hex
         run_id = uuid.uuid4().hex
-        thread_id = f"{self.conversation_id}:{request_id}"
+        thread_id = run_id
         state: AgentState = {
             "conversation_id": self.conversation_id,
             "db_fingerprint": self.settings.db_fingerprint,
             "thread_id": thread_id,
-            "request_id": request_id,
             "run_id": run_id,
             "question": question,
             "status": "running",

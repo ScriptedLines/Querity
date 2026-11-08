@@ -185,7 +185,6 @@ class AgentState(TypedDict, total=False):
     conversation_id: str
     db_fingerprint: str
     thread_id: str
-    request_id: str
     run_id: str
     user_message_id: str
     question: str

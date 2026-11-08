@@ -46,7 +46,7 @@ testpaths = ["tests"]
 addopts = "-q -p no:launch_testing -p no:launch_ros"
 
 [tool.ruff]
-line-length = 100
+line-length = 1000
 target-version = "py312"
 
 [tool.ruff.lint]

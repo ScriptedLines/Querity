@@ -14,7 +14,7 @@ _SOURCE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
 
 
 def normalize_database_url(url: str) -> str:
-    """Force SQLAlchemy to use psycopg 3 instead of silently requiring psycopg2."""
+    """Force SQLAlchemy to use psycopg 3 instead of silently requiring psycopg2. When we append +psycopg it uses psycopg3, wihtout it it deafutls to psycopg2"""
     url = url.strip()
     if url.startswith("postgres://"):
         return "postgresql+psycopg://" + url[len("postgres://") :]
@@ -28,6 +28,7 @@ def normalize_database_url(url: str) -> str:
 
 
 def _split_csv(value: str) -> list[str]:
+    """splits the string on , then strip each element and save to a dict {element1:None,element2:None}, and key is unique so each unqiue element is extracted and sorted in the original order then transformed to list"""
     return list(dict.fromkeys(part.strip() for part in value.split(",") if part.strip()))
 
 

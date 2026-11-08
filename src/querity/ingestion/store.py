@@ -441,7 +441,7 @@ class MetadataStore:
                         "JOIN pg_namespace n ON n.oid = e.extnamespace "
                         "WHERE e.extname = 'vector'"
                     )
-                ).scalar_one_or_none()
+                ).scalar_one_or_none()              
                 if not extension_schema:
                     raise RuntimeError(
                         "pgvector is not installed. Run init-db or enable the vector "

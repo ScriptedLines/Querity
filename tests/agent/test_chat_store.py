@@ -68,34 +68,6 @@ def test_conversations_store_database_url_and_list_across_databases(tmp_path):
         store.close()
 
 
-def test_migrates_single_conversation_schema(tmp_path):
-    path = tmp_path / "history.sqlite3"
-    with sqlite3.connect(path) as connection:
-        connection.execute(
-            """
-            CREATE TABLE conversations (
-                conversation_id TEXT PRIMARY KEY,
-                db_fingerprint TEXT NOT NULL UNIQUE,
-                source_id TEXT NOT NULL,
-                title TEXT NOT NULL DEFAULT 'Data chat',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        connection.execute(
-            "INSERT INTO conversations VALUES (?, ?, ?, ?, ?, ?)",
-            ("old-id", "fingerprint", "analytics", "Data chat", "2026-01-01", "2026-01-01"),
-        )
-    store = ChatStore(path)
-    try:
-        assert store.get_conversation("old-id") is not None
-        new = store.create_conversation("fingerprint", "analytics")
-        assert new["conversation_id"] != "old-id"
-    finally:
-        store.close()
-
-
 def test_pending_and_messages(tmp_path):
     store = ChatStore(tmp_path / "history.sqlite3")
     try:
@@ -139,7 +111,6 @@ def test_query_run_and_verified_search(tmp_path):
         store.create_query_run(
             run_id="run-1",
             conversation_id=conversation_id,
-            request_id="request-1",
             question="Total revenue last month",
         )
         store.update_query_run(
