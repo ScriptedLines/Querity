@@ -1218,7 +1218,7 @@ class QuerityTUI(App[None]):
             messages_count = int(stats.get("messages") or 0)
             if messages_count == 0:
                 self._write_welcome(show_logo=(width >= 70))
-                title = str(self.service.conversation.get("title") or "Data chat")
+                title = str((self.service.conversation.get("title") if self.service.conversation else None) or "New chat")
                 db_lbl = database_label(self.service.settings.source_database_url or "")
                 self._write(
                     Text(
@@ -1457,7 +1457,7 @@ class QuerityTUI(App[None]):
         stats = service.chat_store.stats(service.conversation_id)
         messages = int(stats.get("messages") or 0)
         self._write_welcome(show_logo=messages == 0)
-        title = str(service.conversation.get("title") or "Data chat")
+        title = str((service.conversation.get("title") if service.conversation else None) or "New chat")
         self._write(
             Text(
                 f"Connected to {database_label(normalized)}  ·  {title}  ·  "

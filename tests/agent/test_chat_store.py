@@ -143,3 +143,35 @@ def test_query_run_and_verified_search(tmp_path):
         assert store.stats(conversation_id)["verified_turns"] == 1
     finally:
         store.close()
+
+
+def test_get_latest_conversation_and_none_safety(tmp_path):
+    store = ChatStore(tmp_path / "history.sqlite3")
+    try:
+        assert store.get_latest_conversation("nonexistent") is None
+        assert store.get_latest_pending_conversation("nonexistent") is None
+        assert store.recent_messages(None) == []
+        assert store.get_messages(None) == []
+        assert store.stats(None) == {"messages": 0, "query_runs": 0, "verified_turns": 0}
+        assert store.recent_runs(None) == []
+        assert store.get_query_runs(None) == {}
+        assert store.get_pending(None) is None
+        store.clear_pending(None)
+
+        created = store.create_conversation("fingerprint-a", "analytics", title="First chat")
+        assert store.get_latest_pending_conversation("fingerprint-a") is None
+        latest = store.get_latest_conversation("fingerprint-a")
+        assert latest is not None
+        assert latest["conversation_id"] == created["conversation_id"]
+        assert latest["title"] == "First chat"
+
+        store.set_pending(created["conversation_id"], thread_id="t1", kind="clarification")
+        pending_conv = store.get_latest_pending_conversation("fingerprint-a")
+        assert pending_conv is not None
+        assert pending_conv["conversation_id"] == created["conversation_id"]
+
+        store.clear_pending(created["conversation_id"])
+        assert store.get_latest_pending_conversation("fingerprint-a") is None
+    finally:
+        store.close()
+

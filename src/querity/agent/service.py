@@ -130,12 +130,12 @@ class AgentService:
             settings,
             checkpointer=self.checkpoint_store.saver,
         )
-        self.conversation = self.chat_store.get_or_create_conversation(
+        self.conversation = self.chat_store.get_latest_pending_conversation(
             settings.db_fingerprint,
-            settings.source_id,
-            database_url=settings.source_url,
         )
-        self.conversation_id = str(self.conversation["conversation_id"])
+        self.conversation_id: str | None = (
+            str(self.conversation["conversation_id"]) if self.conversation else None
+        )
 
     def start_turn(
         self,
@@ -152,14 +152,20 @@ class AgentService:
                 "A previous query is waiting for clarification or approval; "
                 "resolve it before starting another turn."
             )
-        conversation = self.chat_store.get_conversation(self.conversation_id)
+        conversation = (
+            self.chat_store.get_conversation(self.conversation_id)
+            if self.conversation_id
+            else None
+        )
         if (
             conversation is None
             or conversation.get("db_fingerprint") != self.settings.db_fingerprint
         ):
-            conversation = self.chat_store.get_or_create_conversation(
+            title = " ".join(question.split())[:80]
+            conversation = self.chat_store.create_conversation(
                 self.settings.db_fingerprint,
                 self.settings.source_id,
+                title=title,
                 database_url=self.settings.source_url,
             )
         self.conversation = conversation
@@ -215,6 +221,8 @@ class AgentService:
         )
 
     def pending_interrupt(self) -> AgentTurnResult | None:
+        if not self.conversation_id:
+            return None
         pending = self.chat_store.get_pending(self.conversation_id)
         if pending is None:
             return None
@@ -240,29 +248,24 @@ class AgentService:
 
     def refresh(self) -> None:
         self.catalog_cache.invalidate()
-        current_id = self.conversation_id
-        conversation = self.chat_store.get_conversation(current_id)
+        if not self.conversation_id:
+            self.conversation = None
+            return
+        conversation = self.chat_store.get_conversation(self.conversation_id)
         if (
             conversation is None
             or conversation.get("db_fingerprint") != self.settings.db_fingerprint
         ):
-            conversation = self.chat_store.get_or_create_conversation(
-                self.settings.db_fingerprint,
-                self.settings.source_id,
-                database_url=self.settings.source_url,
-            )
+            self.conversation = None
+            self.conversation_id = None
+            return
         self.conversation = conversation
         self.conversation_id = str(conversation["conversation_id"])
 
     def new_conversation(self, *, title: str = "New chat") -> dict[str, Any]:
-        self.conversation = self.chat_store.create_conversation(
-            self.settings.db_fingerprint,
-            self.settings.source_id,
-            title=title,
-            database_url=self.settings.source_url,
-        )
-        self.conversation_id = str(self.conversation["conversation_id"])
-        return self.conversation
+        self.conversation = None
+        self.conversation_id = None
+        return {"conversation_id": "", "title": title}
 
     def conversations(self, *, limit: int = 50) -> list[dict[str, Any]]:
         return self.chat_store.list_all_conversations(limit=limit)

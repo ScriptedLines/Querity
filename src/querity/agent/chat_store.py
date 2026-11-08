@@ -181,6 +181,31 @@ class ChatStore:
                     """
                 )
 
+    def get_latest_conversation(
+        self,
+        db_fingerprint: str,
+    ) -> dict[str, Any] | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM conversations WHERE db_fingerprint = ? "
+                "ORDER BY updated_at DESC, rowid DESC LIMIT 1",
+                (db_fingerprint,),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def get_latest_pending_conversation(
+        self,
+        db_fingerprint: str,
+    ) -> dict[str, Any] | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM conversations WHERE db_fingerprint = ? "
+                "AND pending_thread_id IS NOT NULL "
+                "ORDER BY updated_at DESC, rowid DESC LIMIT 1",
+                (db_fingerprint,),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
     def get_or_create_conversation(
         self,
         db_fingerprint: str,
@@ -320,7 +345,9 @@ class ChatStore:
                 (thread_id, kind, _now(), conversation_id),
             )
 
-    def clear_pending(self, conversation_id: str) -> None:
+    def clear_pending(self, conversation_id: str | None) -> None:
+        if not conversation_id:
+            return
         with self._lock, self._connect() as connection:
             connection.execute(
                 "UPDATE conversations SET pending_thread_id = NULL, pending_kind = NULL, "
@@ -328,7 +355,9 @@ class ChatStore:
                 (_now(), conversation_id),
             )
 
-    def get_pending(self, conversation_id: str) -> dict[str, str] | None:
+    def get_pending(self, conversation_id: str | None) -> dict[str, str] | None:
+        if not conversation_id:
+            return None
         with self._lock, self._connect() as connection:
             row = connection.execute(
                 "SELECT pending_thread_id, pending_kind FROM conversations "
@@ -420,11 +449,13 @@ class ChatStore:
 
     def recent_messages(
         self,
-        conversation_id: str,
+        conversation_id: str | None,
         *,
         limit: int = 12,
         exclude_message_id: str | None = None,
     ) -> list[dict[str, Any]]:
+        if not conversation_id:
+            return []
         sql = "SELECT * FROM messages WHERE conversation_id = ?"
         params: list[Any] = [conversation_id]
         if exclude_message_id:
@@ -438,10 +469,12 @@ class ChatStore:
 
     def get_messages(
         self,
-        conversation_id: str,
+        conversation_id: str | None,
         *,
         limit: int = 500,
     ) -> list[dict[str, Any]]:
+        if not conversation_id:
+            return []
         sql = (
             "SELECT * FROM messages WHERE conversation_id = ? "
             "ORDER BY created_at ASC, rowid ASC LIMIT ?"
@@ -669,7 +702,9 @@ class ChatStore:
             for row in rows
         ]
 
-    def stats(self, conversation_id: str) -> dict[str, int]:
+    def stats(self, conversation_id: str | None) -> dict[str, int]:
+        if not conversation_id:
+            return {"messages": 0, "query_runs": 0, "verified_turns": 0}
         with self._lock, self._connect() as connection:
             messages = connection.execute(
                 "SELECT count(*) FROM messages WHERE conversation_id = ?",
@@ -689,7 +724,9 @@ class ChatStore:
             "verified_turns": int(verified),
         }
 
-    def recent_runs(self, conversation_id: str, *, limit: int = 20) -> list[dict[str, Any]]:
+    def recent_runs(self, conversation_id: str | None, *, limit: int = 20) -> list[dict[str, Any]]:
+        if not conversation_id:
+            return []
         with self._lock, self._connect() as connection:
             rows = connection.execute(
                 "SELECT run_id, question, sql, status, row_count, duration_ms, error, created_at "
@@ -698,7 +735,9 @@ class ChatStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def get_query_runs(self, conversation_id: str) -> dict[str, dict[str, Any]]:
+    def get_query_runs(self, conversation_id: str | None) -> dict[str, dict[str, Any]]:
+        if not conversation_id:
+            return {}
         with self._lock, self._connect() as connection:
             rows = connection.execute(
                 "SELECT * FROM query_runs WHERE conversation_id = ? ORDER BY created_at ASC",

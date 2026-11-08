@@ -258,6 +258,71 @@ def test_sqlite_checkpoint_survives_process_restart(tmp_path):
     second_store.close()
 
 
+def test_service_lazy_conversation_lifecycle(tmp_path):
+    settings = _settings()
+    store = ChatStore(tmp_path / "history.sqlite3")
+    service = AgentService.__new__(AgentService)
+    service.settings = settings
+    service.chat_store = store
+    service.conversation = store.get_latest_pending_conversation(settings.db_fingerprint)
+    service.conversation_id = (
+        str(service.conversation["conversation_id"]) if service.conversation else None
+    )
+
+    # Initial state: no conversation created yet
+    assert service.conversation_id is None
+    assert service.conversation is None
+    assert store.list_all_conversations() == []
+
+    # Calling new_conversation does not insert rows
+    service.new_conversation(title="Custom Title")
+    assert service.conversation_id is None
+    assert store.list_all_conversations() == []
+
+    # Calling start_turn lazily creates the conversation with the first question as title
+    service.graph = build_graph(
+        FakeNodes(),  # type: ignore[arg-type]
+        settings,
+        checkpointer=InMemorySaver(),
+    )
+    turn = service.start_turn("How many users are active?")
+    assert service.conversation_id is not None
+    assert service.conversation is not None
+    assert service.conversation["title"] == "How many users are active?"
+    assert len(store.list_all_conversations()) == 1
+
+    # On new service startup without any pending interrupt, it opens as blank (None)
+    fresh_service = AgentService.__new__(AgentService)
+    fresh_service.settings = settings
+    fresh_service.chat_store = store
+    fresh_service.conversation = store.get_latest_pending_conversation(settings.db_fingerprint)
+    fresh_service.conversation_id = (
+        str(fresh_service.conversation["conversation_id"]) if fresh_service.conversation else None
+    )
+    assert fresh_service.conversation_id is None
+    assert fresh_service.conversation is None
+
+    # But if that conversation has a pending interrupt, new service startup recovers it
+    store.set_pending(service.conversation_id, thread_id="t-pending", kind="clarification")
+    recovered_service = AgentService.__new__(AgentService)
+    recovered_service.settings = settings
+    recovered_service.chat_store = store
+    recovered_service.conversation = store.get_latest_pending_conversation(settings.db_fingerprint)
+    recovered_service.conversation_id = (
+        str(recovered_service.conversation["conversation_id"]) if recovered_service.conversation else None
+    )
+    assert recovered_service.conversation_id == service.conversation_id
+
+    # Calling new_conversation resets back to unpersisted
+    service.new_conversation()
+    assert service.conversation_id is None
+    assert service.conversation is None
+    # Still only 1 conversation in DB
+    assert len(store.list_all_conversations()) == 1
+    store.close()
+
+
+
 def test_routing_helpers():
     settings = _settings()
     assert route_after_analyze({"status": "failed"}, settings) == "finalize"
