@@ -363,23 +363,14 @@ Type `/` at the prompt to access commands:
 
 ## Headless CLI Reference
 
-Querity includes a headless CLI for scripting, automation, and CI/CD workflows:
+Running `querity` with no subcommands opens the full-screen terminal interface. For automation and CI/CD pipelines, Querity provides headless operational commands:
 
 ```bash
-# Execute a one-off natural language query
-querity ask "List all active subscriptions renewing in the next 7 days"
+# Launch interactive terminal UI (default)
+querity
 
-# Force catalog re-indexing
-querity ingest --force
-
-# Ingest specific tables matching a pattern
-querity ingest --table "orders*" --table "customers*"
-
-# Inspect system status in machine-readable JSON format
+# Inspect system status and catalog health in machine-readable JSON format
 querity status --json
-
-# View configuration path and details
-querity config --path
 
 # Run latency and accuracy benchmarks on the active PostgreSQL database
 querity benchmark
@@ -390,9 +381,14 @@ querity benchmark --limit 5
 # Inspect local cache statistics (entry counts and size)
 querity cache stats
 
-# Clear cached vector embeddings, retrieval bundles, and AST validation decisions
+# Clear cached vector embeddings, retrieval bundles, and AST decisions
 querity cache clear
+
+# Print version
+querity version
 ```
+
+All conversational queries, approval modals, catalog ingestion (`/ingest`), and database connections (`/database`) are managed directly inside the interactive terminal interface.
 
 ---
 
