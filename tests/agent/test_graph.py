@@ -202,7 +202,11 @@ def test_sqlite_checkpoint_survives_process_restart(tmp_path):
     first.settings = settings
     first.graph = first_graph
     first.chat_store = ChatStore(tmp_path / "history.sqlite3")
-    first.chat_store.get_or_create_conversation("conversation-1", "default")
+    first.chat_store.create_conversation(
+        "conversation-1",
+        "default",
+        conversation_id="conversation-1",
+    )
     first.conversation_id = "conversation-1"
     initial = {
         "conversation_id": "conversation-1",

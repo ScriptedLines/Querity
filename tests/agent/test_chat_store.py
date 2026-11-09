@@ -14,27 +14,21 @@ def test_history_database_permissions(tmp_path):
         store.close()
 
 
-def test_one_conversation_per_fingerprint(tmp_path):
-    store = ChatStore(tmp_path / "history.sqlite3")
-    try:
-        first = store.get_or_create_conversation("fingerprint-a", "analytics")
-        second = store.get_or_create_conversation("fingerprint-a", "analytics")
-        other = store.get_or_create_conversation("fingerprint-b", "analytics")
-        assert first["conversation_id"] == second["conversation_id"]
-        assert first["conversation_id"] != other["conversation_id"]
-    finally:
-        store.close()
-
-
 def test_create_conversation_starts_a_new_saved_chat(tmp_path):
     store = ChatStore(tmp_path / "history.sqlite3")
     try:
-        first = store.get_or_create_conversation("fingerprint-a", "analytics")
-        second = store.create_conversation("fingerprint-a", "analytics")
-        assert second["conversation_id"] != first["conversation_id"]
+        first = store.create_conversation("fingerprint-a", "analytics", title="Chat 1")
+        second = store.create_conversation("fingerprint-a", "analytics", title="Chat 2")
+        other = store.create_conversation("fingerprint-b", "analytics", title="Chat 3")
+        assert first["conversation_id"] != second["conversation_id"]
+        assert first["conversation_id"] != other["conversation_id"]
         assert (
-            store.get_or_create_conversation("fingerprint-a", "analytics")["conversation_id"]
+            store.get_latest_conversation("fingerprint-a")["conversation_id"]
             == second["conversation_id"]
+        )
+        assert (
+            store.get_latest_conversation("fingerprint-b")["conversation_id"]
+            == other["conversation_id"]
         )
     finally:
         store.close()
@@ -71,7 +65,7 @@ def test_conversations_store_database_url_and_list_across_databases(tmp_path):
 def test_pending_and_messages(tmp_path):
     store = ChatStore(tmp_path / "history.sqlite3")
     try:
-        conversation = store.get_or_create_conversation("fingerprint", "analytics")
+        conversation = store.create_conversation("fingerprint", "analytics")
         conversation_id = conversation["conversation_id"]
         store.set_pending(conversation_id, thread_id="thread-1", kind="approval")
         assert store.get_pending(conversation_id) == {
@@ -106,7 +100,7 @@ def test_pending_and_messages(tmp_path):
 def test_query_run_and_verified_search(tmp_path):
     store = ChatStore(tmp_path / "history.sqlite3")
     try:
-        conversation = store.get_or_create_conversation("fingerprint", "analytics")
+        conversation = store.create_conversation("fingerprint", "analytics")
         conversation_id = conversation["conversation_id"]
         store.create_query_run(
             run_id="run-1",

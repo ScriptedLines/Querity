@@ -206,62 +206,17 @@ class ChatStore:
             ).fetchone()
         return dict(row) if row is not None else None
 
-    def get_or_create_conversation(
-        self,
-        db_fingerprint: str,
-        source_id: str,
-        *,
-        title: str = "Data chat",
-        database_url: str = "",
-    ) -> dict[str, Any]:
-        now = _now()
-        with self._lock, self._connect() as connection:
-            row = connection.execute(
-                "SELECT * FROM conversations WHERE db_fingerprint = ? "
-                "ORDER BY updated_at DESC, rowid DESC LIMIT 1",
-                (db_fingerprint,),
-            ).fetchone()
-            if row is None:
-                conversation_id = db_fingerprint
-                connection.execute(
-                    "INSERT INTO conversations "
-                    "(conversation_id, db_fingerprint, source_id, database_url, title, "
-                    "created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        conversation_id,
-                        db_fingerprint,
-                        source_id,
-                        database_url,
-                        title,
-                        now,
-                        now,
-                    ),
-                )
-            else:
-                conversation_id = str(row["conversation_id"])
-                connection.execute(
-                    "UPDATE conversations SET source_id = ?, "
-                    "database_url = CASE WHEN ? <> '' THEN ? ELSE database_url END, "
-                    "updated_at = ? WHERE conversation_id = ?",
-                    (source_id, database_url, database_url, now, conversation_id),
-                )
-            result = connection.execute(
-                "SELECT * FROM conversations WHERE conversation_id = ?",
-                (conversation_id,),
-            ).fetchone()
-        return dict(result)  # type: ignore[arg-type]
-
     def create_conversation(
         self,
         db_fingerprint: str,
         source_id: str,
         *,
+        conversation_id: str | None = None,
         title: str = "New chat",
         database_url: str = "",
     ) -> dict[str, Any]:
         now = _now()
-        conversation_id = uuid.uuid4().hex
+        cid = conversation_id or uuid.uuid4().hex
         with self._lock, self._connect() as connection:
             connection.execute(
                 "INSERT INTO conversations "
@@ -269,7 +224,7 @@ class ChatStore:
                 "created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
-                    conversation_id,
+                    cid,
                     db_fingerprint,
                     source_id,
                     database_url,
@@ -280,7 +235,7 @@ class ChatStore:
             )
             row = connection.execute(
                 "SELECT * FROM conversations WHERE conversation_id = ?",
-                (conversation_id,),
+                (cid,),
             ).fetchone()
         return dict(row)  # type: ignore[arg-type]
 

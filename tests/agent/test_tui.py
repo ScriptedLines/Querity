@@ -104,7 +104,7 @@ def test_render_conversation_history_renders_user_sql_and_results(tmp_path) -> N
 
     history_db = tmp_path / "history.sqlite3"
     chat_store = ChatStore(history_db)
-    conv = chat_store.get_or_create_conversation("fp1", "src1", title="Test Chat")
+    conv = chat_store.create_conversation("fp1", "src1", title="Test Chat")
     conv_id = conv["conversation_id"]
 
     run_id = "run-123"
